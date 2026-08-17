@@ -1,0 +1,1089 @@
+import 'dart:async';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:intl/intl.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart' as latlong;
+
+// --- CONFIGURATION ---
+const String supabaseUrl = 'https://lmuvkqsohmodrxveuxdr.supabase.co';
+const String supabaseAnonKey =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxtdXZrcXNvaG1vZHJ4dmV1eGRyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODY4NjY5NzQsImV4cCI6MjEwMjQ0Mjk3NH0.Goel2mRQgBs2hUIjG5sVUZDpO1f8XJ_su2WX0a9u1vE';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  await Supabase.initialize(
+    url: supabaseUrl,
+    anonKey: supabaseAnonKey,
+  );
+
+  runApp(const AthawadeBazaarApp());
+}
+
+final supabase = Supabase.instance.client;
+
+class AthawadeBazaarApp extends StatelessWidget {
+  const AthawadeBazaarApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Shetkari Athawade Bazaar',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF2E7D32),
+          primary: const Color(0xFF2E7D32),
+        ),
+        useMaterial3: true,
+      ),
+      home: const MainNavigationScreen(),
+    );
+  }
+}
+
+class MainNavigationScreen extends StatefulWidget {
+  const MainNavigationScreen({super.key});
+
+  @override
+  State<MainNavigationScreen> createState() => _MainNavigationScreenState();
+}
+
+class _MainNavigationScreenState extends State<MainNavigationScreen> {
+  int _currentIndex = 0;
+  RealtimeChannel? _proximityChannel;
+
+  double _currentLat = 18.5204;
+  double _currentLng = 73.8567;
+
+  final List<Widget> _screens = const [
+    TodayBazaarsScreen(),
+    BazaarMapScreen(),
+    ExploreBazaarsScreen(),
+    AddBazaarScreen(),
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _getUserLocation();
+    _listenForNearbyNewBazaars();
+  }
+
+  @override
+  void dispose() {
+    _proximityChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  Future<void> _getUserLocation() async {
+    try {
+      Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 4),
+      );
+      _currentLat = pos.latitude;
+      _currentLng = pos.longitude;
+    } catch (_) {}
+  }
+
+  // --- 50 KM REAL-TIME PROXIMITY NOTIFIER ---
+  void _listenForNearbyNewBazaars() {
+    _proximityChannel = supabase
+        .channel('public:proximity_alert')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'bazaars',
+          callback: (payload) {
+            final newRecord = payload.newRecord;
+            final double? bLat = (newRecord['latitude'] as num?)?.toDouble();
+            final double? bLng = (newRecord['longitude'] as num?)?.toDouble();
+            final String bName = newRecord['name'] ?? 'New Athawade Bazaar';
+            final String bLocality = newRecord['locality'] ?? 'Nearby Area';
+
+            if (bLat != null && bLng != null) {
+              final double distanceInMeters = Geolocator.distanceBetween(
+                _currentLat,
+                _currentLng,
+                bLat,
+                bLng,
+              );
+              final double distanceInKm = distanceInMeters / 1000.0;
+
+              // Trigger alert if within 50 KM
+              if (distanceInKm <= 50.0 && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    duration: const Duration(seconds: 6),
+                    backgroundColor: const Color(0xFF2E7D32),
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    content: Row(
+                      children: [
+                        const Icon(Icons.add_location_alt, color: Colors.white),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "🚨 New Bazaar Nearby: $bName",
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.white),
+                              ),
+                              Text(
+                                "📍 $bLocality (${distanceInKm.toStringAsFixed(1)} km away)",
+                                style: const TextStyle(
+                                    fontSize: 12, color: Colors.white70),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    action: SnackBarAction(
+                      label: "VIEW",
+                      textColor: Colors.amberAccent,
+                      onPressed: () {
+                        setState(() => _currentIndex = 0); // Switch to Today's screen
+                      },
+                    ),
+                  ),
+                );
+              }
+            }
+          },
+        )
+        .subscribe();
+  }
+
+  void _shareApp() async {
+    const String shareText =
+        '🥬 Find local Shetkari Athawade Bazaars near you with live schedules, GPS navigation, and community-pinpointed locations!\n\nAccess here: https://lmuvkqsohmodrxveuxdr.supabase.co';
+
+    final Uri sendUri = Uri.parse(
+        'https://api.whatsapp.com/send?text=${Uri.encodeComponent(shareText)}');
+
+    try {
+      await launchUrl(sendUri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      final Uri smsUri = Uri.parse('sms:?body=${Uri.encodeComponent(shareText)}');
+      await launchUrl(smsUri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Shetkari Athawade Bazaar'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share),
+            tooltip: 'Share App with Friends',
+            onPressed: _shareApp,
+          ),
+        ],
+      ),
+      body: _screens[_currentIndex],
+      bottomNavigationBar: NavigationBarTheme(
+        data: NavigationBarThemeData(
+          labelTextStyle: MaterialStateProperty.all(
+            const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
+          ),
+        ),
+        child: NavigationBar(
+          selectedIndex: _currentIndex,
+          labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+          height: 65,
+          onDestinationSelected: (index) => setState(() => _currentIndex = index),
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.storefront_outlined),
+              selectedIcon: Icon(Icons.storefront),
+              label: "Today",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.map_outlined),
+              selectedIcon: Icon(Icons.map),
+              label: "Live Map",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.calendar_month_outlined),
+              selectedIcon: Icon(Icons.calendar_month),
+              label: "Explorer",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.add_location_alt_outlined),
+              selectedIcon: Icon(Icons.add_location_alt),
+              label: "Add Spot",
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 1. TODAY'S ACTIVE MARKETS (REALTIME)
+// ==========================================
+class TodayBazaarsScreen extends StatefulWidget {
+  const TodayBazaarsScreen({super.key});
+
+  @override
+  State<TodayBazaarsScreen> createState() => _TodayBazaarsScreenState();
+}
+
+class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
+  bool _isLoading = true;
+  String? _statusNote;
+  List<Map<String, dynamic>> _bazaars = [];
+  RealtimeChannel? _realtimeChannel;
+
+  double _userLat = 18.5204;
+  double _userLng = 73.8567;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    _subscribeToRealtime();
+  }
+
+  @override
+  void dispose() {
+    _realtimeChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeToRealtime() {
+    _realtimeChannel = supabase
+        .channel('public:bazaars_today')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'bazaars',
+          callback: (payload) => _loadData(),
+        )
+        .subscribe();
+  }
+
+  Future<void> _loadData() async {
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () => false,
+      );
+
+      if (serviceEnabled) {
+        LocationPermission perm = await Geolocator.checkPermission().timeout(
+          const Duration(seconds: 1),
+          onTimeout: () => LocationPermission.denied,
+        );
+
+        if (perm == LocationPermission.denied) {
+          perm = await Geolocator.requestPermission().timeout(
+            const Duration(seconds: 2),
+            onTimeout: () => LocationPermission.denied,
+          );
+        }
+
+        if (perm == LocationPermission.whileInUse ||
+            perm == LocationPermission.always) {
+          Position pos = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.medium,
+            timeLimit: const Duration(seconds: 4),
+          );
+          _userLat = pos.latitude;
+          _userLng = pos.longitude;
+        } else {
+          _statusNote = "GPS permission denied. Showing Pune center.";
+        }
+      } else {
+        _statusNote = "Location service is off. Using default Pune center.";
+      }
+    } catch (_) {
+      _statusNote = "Using default Pune center.";
+    }
+
+    final int todayWeekday = DateTime.now().weekday % 7;
+
+    try {
+      final response = await supabase.rpc('get_nearby_bazaars', params: {
+        'user_lat': _userLat,
+        'user_lng': _userLng,
+        'target_day': todayWeekday,
+        'radius_meters': 50000,
+      });
+
+      if (mounted) {
+        setState(() {
+          _bazaars = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _statusNote = "Query error: $e";
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _openMap(double lat, double lng) async {
+    final uri =
+        Uri.parse("https://www.google.com/maps/search/?api=1&query=$lat,$lng");
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final String dayName = DateFormat('EEEE').format(DateTime.now());
+
+    return Scaffold(
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Column(
+              children: [
+                if (_statusNote != null)
+                  Container(
+                    width: double.infinity,
+                    color: Colors.amber.shade100,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    child: Text(
+                      _statusNote!,
+                      style:
+                          TextStyle(fontSize: 12, color: Colors.amber.shade900),
+                    ),
+                  ),
+                Expanded(
+                  child: _bazaars.isEmpty
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Icon(Icons.storefront,
+                                  size: 64, color: Colors.grey),
+                              const SizedBox(height: 12),
+                              Text(
+                                "No active bazaars scheduled today ($dayName).",
+                                style: const TextStyle(
+                                    fontSize: 16, color: Colors.grey),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text(
+                                  "Check 'Live Map' or 'Explorer'."),
+                            ],
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _bazaars.length,
+                          itemBuilder: (context, index) {
+                            final item = _bazaars[index];
+                            final double distanceKm =
+                                (item['distance_meters'] as num) / 1000;
+
+                            return Card(
+                              elevation: 2,
+                              margin: const EdgeInsets.only(bottom: 12),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12)),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            item['name'] ?? 'Shetkari Bazaar',
+                                            style: const TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.bold),
+                                          ),
+                                        ),
+                                        Chip(
+                                          avatar: const Icon(
+                                              Icons.directions_walk,
+                                              size: 16),
+                                          label: Text(
+                                              "${distanceKm.toStringAsFixed(1)} km"),
+                                          backgroundColor: Colors.green.shade50,
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      "📍 ${item['locality']}${item['landmark'] != null && item['landmark'].toString().isNotEmpty ? ' - ${item['landmark']}' : ''}",
+                                      style: TextStyle(
+                                          color: Colors.grey.shade700),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Row(
+                                      children: [
+                                        const Icon(Icons.access_time,
+                                            size: 16, color: Colors.orange),
+                                        const SizedBox(width: 6),
+                                        Text(
+                                          "Timings: ${item['start_time']} to ${item['end_time']}",
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.w500),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 12),
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton.icon(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor: Colors.green.shade700,
+                                          foregroundColor: Colors.white,
+                                        ),
+                                        icon: const Icon(Icons.navigation),
+                                        label: const Text("Navigate to Bazaar"),
+                                        onPressed: () => _openMap(
+                                          (item['latitude'] as num).toDouble(),
+                                          (item['longitude'] as num).toDouble(),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+// ==========================================
+// 2. INTERACTIVE LIVE MAP (REALTIME)
+// ==========================================
+class BazaarMapScreen extends StatefulWidget {
+  const BazaarMapScreen({super.key});
+
+  @override
+  State<BazaarMapScreen> createState() => _BazaarMapScreenState();
+}
+
+class _BazaarMapScreenState extends State<BazaarMapScreen> {
+  final MapController _mapController = MapController();
+  List<Map<String, dynamic>> _allBazaars = [];
+  bool _isLoading = true;
+  double _centerLat = 18.5204;
+  double _centerLng = 73.8567;
+  RealtimeChannel? _mapRealtimeChannel;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchBazaarsForMap();
+    _subscribeMapRealtime();
+  }
+
+  @override
+  void dispose() {
+    _mapRealtimeChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeMapRealtime() {
+    _mapRealtimeChannel = supabase
+        .channel('public:bazaars_map')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'bazaars',
+          callback: (payload) => _fetchBazaarsForMap(),
+        )
+        .subscribe();
+  }
+
+  Future<void> _fetchBazaarsForMap() async {
+    try {
+      Position pos = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+        timeLimit: const Duration(seconds: 4),
+      );
+      _centerLat = pos.latitude;
+      _centerLng = pos.longitude;
+    } catch (_) {}
+
+    try {
+      final data = await supabase
+          .from('bazaars')
+          .select('id, name, locality, landmark, latitude, longitude, bazaar_schedules(day_of_week, start_time, end_time)');
+
+      if (mounted) {
+        setState(() {
+          _allBazaars = List<Map<String, dynamic>>.from(data);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _showBazaarBottomSheet(Map<String, dynamic> bazaar) {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        final schedules = bazaar['bazaar_schedules'] as List<dynamic>? ?? [];
+        final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+        return Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                bazaar['name'] ?? 'Shetkari Bazaar',
+                style:
+                    const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                "📍 Locality: ${bazaar['locality']} ${bazaar['landmark'] != null ? '(${bazaar['landmark']})' : ''}",
+                style: TextStyle(color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 12),
+              const Text("Operating Days & Times:",
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 4),
+              if (schedules.isEmpty)
+                const Text("No fixed schedules added yet.")
+              else
+                ...schedules.map((s) => Text(
+                    "• ${days[s['day_of_week']]}: ${s['start_time']} - ${s['end_time']}")),
+              const SizedBox(height: 20),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.green.shade700,
+                    foregroundColor: Colors.white,
+                  ),
+                  icon: const Icon(Icons.navigation),
+                  label: const Text("Navigate via Google Maps"),
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    final uri = Uri.parse(
+                      "https://www.google.com/maps/search/?api=1&query=${bazaar['latitude']},${bazaar['longitude']}",
+                    );
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      floatingActionButton: FloatingActionButton(
+        mini: true,
+        tooltip: 'My Location',
+        backgroundColor: Colors.white,
+        child: const Icon(Icons.my_location, color: Colors.blue),
+        onPressed: () {
+          _mapController.move(latlong.LatLng(_centerLat, _centerLng), 13);
+        },
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : FlutterMap(
+              mapController: _mapController,
+              options: MapOptions(
+                initialCenter: latlong.LatLng(_centerLat, _centerLng),
+                initialZoom: 12.0,
+              ),
+              children: [
+                TileLayer(
+                  urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                  userAgentPackageName: 'com.example.aathawade_bazaar',
+                ),
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: latlong.LatLng(_centerLat, _centerLng),
+                      width: 40,
+                      height: 40,
+                      child: const Icon(Icons.my_location,
+                          color: Colors.blue, size: 30),
+                    ),
+                    ..._allBazaars.map((bazaar) {
+                      final double lat = (bazaar['latitude'] as num).toDouble();
+                      final double lng = (bazaar['longitude'] as num).toDouble();
+
+                      return Marker(
+                        point: latlong.LatLng(lat, lng),
+                        width: 45,
+                        height: 45,
+                        child: GestureDetector(
+                          onTap: () => _showBazaarBottomSheet(bazaar),
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Color(0xFF2E7D32),
+                            size: 40,
+                          ),
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+// ==========================================
+// 3. EXPLORE BY DAY SCREEN
+// ==========================================
+class ExploreBazaarsScreen extends StatefulWidget {
+  const ExploreBazaarsScreen({super.key});
+
+  @override
+  State<ExploreBazaarsScreen> createState() => _ExploreBazaarsScreenState();
+}
+
+class _ExploreBazaarsScreenState extends State<ExploreBazaarsScreen> {
+  int _selectedDay = 1;
+  bool _isLoading = false;
+  List<Map<String, dynamic>> _results = [];
+
+  final List<String> _days = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchByDay();
+  }
+
+  Future<void> _fetchByDay() async {
+    setState(() => _isLoading = true);
+    try {
+      final response = await supabase
+          .from('bazaar_schedules')
+          .select('day_of_week, start_time, end_time, bazaars(name, locality, landmark, latitude, longitude)')
+          .eq('day_of_week', _selectedDay);
+
+      if (mounted) {
+        setState(() {
+          _results = List<Map<String, dynamic>>.from(response);
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Column(
+        children: [
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: List.generate(_days.length, (index) {
+                final isSelected = _selectedDay == index;
+                return Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: ChoiceChip(
+                    label: Text(_days[index]),
+                    selected: isSelected,
+                    onSelected: (val) {
+                      if (val) {
+                        setState(() => _selectedDay = index);
+                        _fetchByDay();
+                      }
+                    },
+                  ),
+                );
+              }),
+            ),
+          ),
+          const Divider(height: 1),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _results.isEmpty
+                    ? Center(
+                        child: Text(
+                            "No bazaars registered for ${_days[_selectedDay]}."))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _results.length,
+                        itemBuilder: (context, index) {
+                          final item = _results[index];
+                          final bazaar = item['bazaars'] as Map<String, dynamic>?;
+
+                          return Card(
+                            margin: const EdgeInsets.only(bottom: 10),
+                            child: ListTile(
+                              leading: const CircleAvatar(
+                                backgroundColor: Color(0xFFE8F5E9),
+                                child: Icon(Icons.store,
+                                    color: Color(0xFF2E7D32)),
+                              ),
+                              title: Text(
+                                bazaar?['name'] ?? 'Athawade Bazaar',
+                                style: const TextStyle(
+                                    fontWeight: FontWeight.bold),
+                              ),
+                              subtitle: Text(
+                                "📍 ${bazaar?['locality'] ?? ''} • ⏰ ${item['start_time']} - ${item['end_time']}",
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 4. ADD & PINPOINT BAZAAR SCREEN
+// ==========================================
+class AddBazaarScreen extends StatefulWidget {
+  const AddBazaarScreen({super.key});
+
+  @override
+  State<AddBazaarScreen> createState() => _AddBazaarScreenState();
+}
+
+class _AddBazaarScreenState extends State<AddBazaarScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final _nameController = TextEditingController();
+  final _localityController = TextEditingController();
+  final _landmarkController = TextEditingController();
+  final MapController _miniMapController = MapController();
+
+  late int _selectedDay;
+  bool _isSaving = false;
+  bool _isLocating = false;
+
+  double _pinnedLat = 18.5204;
+  double _pinnedLng = 73.8567;
+
+  final List<String> _days = [
+    'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday'
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedDay = DateTime.now().weekday % 7;
+    _pinpointCurrentLocation();
+  }
+
+  Future<void> _pinpointCurrentLocation() async {
+    setState(() => _isLocating = true);
+    try {
+      LocationPermission perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) {
+        perm = await Geolocator.requestPermission();
+      }
+
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
+        Position pos = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 5),
+        );
+        setState(() {
+          _pinnedLat = pos.latitude;
+          _pinnedLng = pos.longitude;
+        });
+        _miniMapController.move(latlong.LatLng(_pinnedLat, _pinnedLng), 15);
+      }
+    } catch (_) {}
+    finally {
+      if (mounted) setState(() => _isLocating = false);
+    }
+  }
+
+  Future<void> _submitBazaar() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+
+    try {
+      final bazaarRes = await supabase.from('bazaars').insert({
+        'name': _nameController.text.trim(),
+        'locality': _localityController.text.trim(),
+        'landmark': _landmarkController.text.trim(),
+        'latitude': _pinnedLat,
+        'longitude': _pinnedLng,
+        'verified': true,
+      }).select().single();
+
+      final String newBazaarId = bazaarRes['id'];
+
+      await supabase.from('bazaar_schedules').insert({
+        'bazaar_id': newBazaarId,
+        'day_of_week': _selectedDay,
+        'start_time': '15:30:00',
+        'end_time': '21:00:00',
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              '📍 Athawade Bazaar added! Synced live across all devices.'),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
+
+      _nameController.clear();
+      _localityController.clear();
+      _landmarkController.clear();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+            content: Text('Failed to save: $e'),
+            backgroundColor: Colors.red),
+      );
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Card(
+                elevation: 2,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            "📍 Pinpoint Location",
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          TextButton.icon(
+                            icon: _isLocating
+                                ? const SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2),
+                                  )
+                                : const Icon(Icons.my_location, size: 16),
+                            label: const Text("Use Live GPS"),
+                            onPressed:
+                                _isLocating ? null : _pinpointCurrentLocation,
+                          ),
+                        ],
+                      ),
+                      const Text(
+                        "Tap anywhere on the map to place the market pin:",
+                        style: TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      const SizedBox(height: 8),
+                      Container(
+                        height: 200,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.grey.shade300),
+                        ),
+                        clipBehavior: Clip.antiAlias,
+                        child: FlutterMap(
+                          mapController: _miniMapController,
+                          options: MapOptions(
+                            initialCenter:
+                                latlong.LatLng(_pinnedLat, _pinnedLng),
+                            initialZoom: 14.0,
+                            onTap: (_, point) {
+                              setState(() {
+                                _pinnedLat = point.latitude;
+                                _pinnedLng = point.longitude;
+                              });
+                            },
+                          ),
+                          children: [
+                            TileLayer(
+                              urlTemplate:
+                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName:
+                                  'com.example.aathawade_bazaar',
+                            ),
+                            MarkerLayer(
+                              markers: [
+                                Marker(
+                                  point: latlong.LatLng(_pinnedLat, _pinnedLng),
+                                  width: 45,
+                                  height: 45,
+                                  child: const Icon(
+                                    Icons.location_on,
+                                    color: Colors.red,
+                                    size: 45,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.pin_drop,
+                              size: 16, color: Colors.red),
+                          const SizedBox(width: 4),
+                          Text(
+                            "Selected: ${_pinnedLat.toStringAsFixed(5)}, ${_pinnedLng.toStringAsFixed(5)}",
+                            style: const TextStyle(
+                                fontSize: 12, fontWeight: FontWeight.bold),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: "Bazaar Name",
+                  hintText: "e.g., Balewadi Shetkari Bazaar",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.storefront),
+                ),
+                validator: (v) => v!.isEmpty ? "Enter market name" : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _localityController,
+                decoration: const InputDecoration(
+                  labelText: "Locality / Area",
+                  hintText: "e.g., Baner, Wakad, Kothrud",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.location_city),
+                ),
+                validator: (v) => v!.isEmpty ? "Enter locality" : null,
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: _landmarkController,
+                decoration: const InputDecoration(
+                  labelText: "Landmark (Optional)",
+                  hintText: "e.g., Opposite Cummins ground",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.flag_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                value: _selectedDay,
+                decoration: const InputDecoration(
+                  labelText: "Operating Day of Week",
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.calendar_today),
+                ),
+                items: List.generate(
+                  _days.length,
+                  (index) => DropdownMenuItem(
+                    value: index,
+                    child: Text(_days[index]),
+                  ),
+                ),
+                onChanged: (val) => setState(() => _selectedDay = val!),
+              ),
+              const SizedBox(height: 20),
+              ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  backgroundColor: const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.check_circle_outline),
+                onPressed: _isSaving ? null : _submitBazaar,
+                label: _isSaving
+                    ? const SizedBox(
+                        height: 20,
+                        width: 20,
+                        child: CircularProgressIndicator(
+                            color: Colors.white, strokeWidth: 2),
+                      )
+                    : const Text("Save & Publish Live to All Devices",
+                        style: TextStyle(fontSize: 16)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
