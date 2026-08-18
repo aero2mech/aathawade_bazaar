@@ -676,44 +676,35 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                               color: Colors.blue, size: 30),
                         ),
                         ..._allBazaars.map((bazaar) {
-                          final double lat =
-                              (bazaar['latitude'] as num).toDouble();
-                          final double lng =
-                              (bazaar['longitude'] as num).toDouble();
+                          final double lat = (bazaar['latitude'] as num).toDouble();
+                          final double lng = (bazaar['longitude'] as num).toDouble();
                           final bool isToday = _isBazaarToday(bazaar);
 
                           return Marker(
                             point: latlong.LatLng(lat, lng),
-                            width: 44,
-                            height: 44,
+                            width: 32,
+                            height: 32,
                             child: GestureDetector(
                               onTap: () => _showBazaarBottomSheet(bazaar),
                               child: Container(
                                 decoration: BoxDecoration(
                                   color: isToday
-                                      ? const Color(0xFF2E7D32)
-                                      : const Color(0xFFE65100),
+                                      ? const Color(0xFF2E7D32) // Forest Green for Today
+                                      : const Color(0xFFE65100), // Clean Orange for Other Days
                                   shape: BoxShape.circle,
-                                  border: Border.all(
-                                      color: Colors.white, width: 2.5),
+                                  border: Border.all(color: Colors.white, width: 2.0),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: (isToday
-                                              ? Colors.green
-                                              : Colors.orange)
-                                          .withOpacity(0.45),
-                                      blurRadius: 6,
-                                      spreadRadius: 1,
-                                      offset: const Offset(0, 2),
+                                      color: Colors.black.withOpacity(0.25),
+                                      blurRadius: 3.5,
+                                      offset: const Offset(0, 1.5),
                                     ),
                                   ],
                                 ),
                                 child: Icon(
-                                  isToday
-                                      ? Icons.storefront
-                                      : Icons.location_on,
+                                  isToday ? Icons.storefront : Icons.location_on,
                                   color: Colors.white,
-                                  size: 22,
+                                  size: 16,
                                 ),
                               ),
                             ),
