@@ -1,43 +1,73 @@
-name: Build Native iOS App
+name: Build & Release APK and IPA
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ main ]
   workflow_dispatch:
 
-jobs:
-  build-ios:
-    runs-on: macos-14
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+permissions:
+  contents: write
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
+jobs:
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
+      - run: flutter pub get
+      - run: flutter build apk --release
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: ShetkariBazaar-Android-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
 
-      - name: Install Dependencies
-        run: flutter pub get
-
-      - name: Build iOS Application
-        run: flutter build ios --release --no-codesign
-
-      - name: Package Payload to IPA
+  build-ios:
+    name: Build iOS IPA
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ios --release --no-codesign
+      - name: Package IPA
         run: |
           mkdir -p Payload
           cp -r build/ios/iphoneos/Runner.app Payload/
-          zip -r ShetkariAthawadeBazaar.ipa Payload
-
-      - name: Upload Downloadable IPA
+          zip -r ShetkariBazaar.ipa Payload
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ShetkariAthawadeBazaar-iOS
-          path: ShetkariAthawadeBazaar.ipa
+          name: ShetkariBazaar-iOS-IPA
+          path: ShetkariBazaar.ipa
+
+  create-github-release:
+    name: Publish Direct Download Release
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.${{ github.run_number }}
+          name: "Shetkari Athawade Bazaar v1.0.${{ github.run_number }}"
+          body: "Download the latest Android APK and iOS IPA below."
+          files: |
+            artifacts/ShetkariBazaar-Android-APK/app-release.apk
+            artifacts/ShetkariBazaar-iOS-IPA/ShetkariBazaar.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
