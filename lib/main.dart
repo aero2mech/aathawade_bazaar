@@ -197,7 +197,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       body: _screens[_currentIndex],
       bottomNavigationBar: NavigationBarTheme(
         data: NavigationBarThemeData(
-          labelTextStyle: MaterialStateProperty.all(
+          labelTextStyle: WidgetStateProperty.all(
             const TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
           ),
         ),
@@ -563,7 +563,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     return fallback;
   }
 
-  // --- EDIT SPOT DIALOG (MULTI-DAY, EDITABLE TIMINGS & PIN MOVEMENT) ---
+  // --- EDIT SPOT DIALOG (ATOMIC SAVE & NO CONFLICT ERRORS) ---
   void _editBazaarDialog(Map<String, dynamic> bazaar) {
     final nameController = TextEditingController(text: bazaar['name'] ?? '');
     final localityController = TextEditingController(text: bazaar['locality'] ?? '');
@@ -579,7 +579,6 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
         .toSet();
     if (selectedDays.isEmpty) selectedDays.add(DateTime.now().weekday % 7);
 
-    // Initial timings
     String? initialStartStr = schedules.isNotEmpty ? schedules[0]['start_time'] : null;
     String? initialEndStr = schedules.isNotEmpty ? schedules[0]['end_time'] : null;
 
@@ -757,7 +756,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                   : () async {
                       setDialogState(() => isSavingEdit = true);
                       try {
-                        final bazaarId = bazaar['id'];
+                        final String bazaarId = bazaar['id'];
                         final String startTimeFormatted = _formatTimeOfDay(startTime);
                         final String endTimeFormatted = _formatTimeOfDay(endTime);
 
@@ -770,17 +769,29 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                           'longitude': updatedLng,
                         }).eq('id', bazaarId);
 
-                        // 2. Re-sync schedule records with custom timings
-                        await supabase.from('bazaar_schedules').delete().eq('bazaar_id', bazaarId);
+                        // 2. Remove unselected days first
+                        final allDays = [0, 1, 2, 3, 4, 5, 6];
+                        final daysToRemove = allDays.where((d) => !selectedDays.contains(d)).toList();
 
-                        final newSchedules = selectedDays.map((day) => {
+                        if (daysToRemove.isNotEmpty) {
+                          await supabase
+                              .from('bazaar_schedules')
+                              .delete()
+                              .eq('bazaar_id', bazaarId)
+                              .inFilter('day_of_week', daysToRemove);
+                        }
+
+                        // 3. Upsert selected days atomically
+                        final upsertList = selectedDays.map((day) => {
                           'bazaar_id': bazaarId,
                           'day_of_week': day,
                           'start_time': startTimeFormatted,
                           'end_time': endTimeFormatted,
                         }).toList();
 
-                        await supabase.from('bazaar_schedules').insert(newSchedules);
+                        await supabase
+                            .from('bazaar_schedules')
+                            .upsert(upsertList, onConflict: 'bazaar_id,day_of_week');
 
                         if (ctx.mounted) Navigator.pop(ctx);
                         _fetchBazaarsForMap();
