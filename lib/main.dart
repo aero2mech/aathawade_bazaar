@@ -546,7 +546,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     return schedules.any((s) => s['day_of_week'] == todayWeekday);
   }
 
-  // --- EDIT SPOT DIALOG (WITH INTERACTIVE PIN MOVEMENT) ---
+  // --- EDIT SPOT DIALOG (MULTI-DAY SELECTION & PIN REPOSITIONING) ---
   void _editBazaarDialog(Map<String, dynamic> bazaar) {
     final nameController = TextEditingController(text: bazaar['name'] ?? '');
     final localityController = TextEditingController(text: bazaar['locality'] ?? '');
@@ -557,8 +557,12 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     double updatedLng = (bazaar['longitude'] as num).toDouble();
     final MapController editMapController = MapController();
 
-    int selectedDay = schedules.isNotEmpty ? (schedules[0]['day_of_week'] ?? 0) : 0;
-    final days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    // Populate existing active days
+    final Set<int> selectedDays = schedules
+        .map((s) => (s['day_of_week'] as num).toInt())
+        .toSet();
+
+    final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
     showDialog(
       context: context,
@@ -598,28 +602,42 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                       prefixIcon: Icon(Icons.flag_outlined),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  DropdownButtonFormField<int>(
-                    value: selectedDay,
-                    decoration: const InputDecoration(
-                      labelText: "Operating Day",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.calendar_today),
-                    ),
-                    items: List.generate(
-                      days.length,
-                      (idx) => DropdownMenuItem(value: idx, child: Text(days[idx])),
-                    ),
-                    onChanged: (val) => setDialogState(() => selectedDay = val!),
+                  const SizedBox(height: 14),
+                  const Text(
+                    "📅 Select Operating Days:",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: List.generate(days.length, (idx) {
+                      final isSelected = selectedDays.contains(idx);
+                      return FilterChip(
+                        label: Text(days[idx]),
+                        selected: isSelected,
+                        selectedColor: const Color(0xFFC8E6C9),
+                        checkmarkColor: const Color(0xFF2E7D32),
+                        onSelected: (bool selected) {
+                          setDialogState(() {
+                            if (selected) {
+                              selectedDays.add(idx);
+                            } else if (selectedDays.length > 1) {
+                              selectedDays.remove(idx);
+                            }
+                          });
+                        },
+                      );
+                    }),
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    "📍 Tap on map to reposition pin:",
+                    "📍 Tap map to reposition pin:",
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
                   ),
                   const SizedBox(height: 6),
                   Container(
-                    height: 180,
+                    height: 160,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.grey.shade300),
@@ -646,23 +664,18 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                           markers: [
                             Marker(
                               point: latlong.LatLng(updatedLat, updatedLng),
-                              width: 40,
-                              height: 40,
+                              width: 36,
+                              height: 36,
                               child: const Icon(
                                 Icons.location_on,
                                 color: Colors.red,
-                                size: 40,
+                                size: 36,
                               ),
                             ),
                           ],
                         ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    "Position: ${updatedLat.toStringAsFixed(5)}, ${updatedLng.toStringAsFixed(5)}",
-                    style: const TextStyle(fontSize: 11, color: Colors.grey),
                   ),
                 ],
               ),
@@ -680,6 +693,8 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
               ),
               onPressed: () async {
                 final bazaarId = bazaar['id'];
+                
+                // 1. Update Bazaar Metadata
                 await supabase.from('bazaars').update({
                   'name': nameController.text.trim(),
                   'locality': localityController.text.trim(),
@@ -688,12 +703,15 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                   'longitude': updatedLng,
                 }).eq('id', bazaarId);
 
-                if (schedules.isNotEmpty) {
-                  await supabase
-                      .from('bazaar_schedules')
-                      .update({'day_of_week': selectedDay})
-                      .eq('bazaar_id', bazaarId);
-                }
+                // 2. Re-sync all selected days in bazaar_schedules
+                await supabase.from('bazaar_schedules').delete().eq('bazaar_id', bazaarId);
+                final newSchedules = selectedDays.map((day) => {
+                  'bazaar_id': bazaarId,
+                  'day_of_week': day,
+                  'start_time': '15:30:00',
+                  'end_time': '21:00:00',
+                }).toList();
+                await supabase.from('bazaar_schedules').insert(newSchedules);
 
                 if (ctx.mounted) Navigator.pop(ctx);
                 _fetchBazaarsForMap();
@@ -1101,7 +1119,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
   final _landmarkController = TextEditingController();
   final MapController _miniMapController = MapController();
 
-  late int _selectedDay;
+  final Set<int> _selectedDays = {};
   bool _isSaving = false;
   bool _isLocating = false;
 
@@ -1121,7 +1139,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
   @override
   void initState() {
     super.initState();
-    _selectedDay = DateTime.now().weekday % 7;
+    _selectedDays.add(DateTime.now().weekday % 7);
     _pinpointCurrentLocation();
   }
 
@@ -1133,7 +1151,8 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
         perm = await Geolocator.requestPermission();
       }
 
-      if (perm == LocationPermission.whileInUse || perm == LocationPermission.always) {
+      if (perm == LocationPermission.whileInUse ||
+          perm == LocationPermission.always) {
         Position pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 5),
@@ -1144,13 +1163,24 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
         });
         _miniMapController.move(latlong.LatLng(_pinnedLat, _pinnedLng), 15);
       }
-    } catch (_) {} finally {
+    } catch (_) {}
+    finally {
       if (mounted) setState(() => _isLocating = false);
     }
   }
 
   Future<void> _submitBazaar() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_selectedDays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please select at least one operating day.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
     setState(() => _isSaving = true);
 
     try {
@@ -1165,17 +1195,20 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
 
       final String newBazaarId = bazaarRes['id'];
 
-      await supabase.from('bazaar_schedules').insert({
+      // Batch insert multiple schedules for the same bazaar
+      final scheduleInserts = _selectedDays.map((day) => {
         'bazaar_id': newBazaarId,
-        'day_of_week': _selectedDay,
+        'day_of_week': day,
         'start_time': '15:30:00',
         'end_time': '21:00:00',
-      });
+      }).toList();
+
+      await supabase.from('bazaar_schedules').insert(scheduleInserts);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('📍 Bhaaji Market added! Synced live across all devices.'),
+          content: Text('📍 Bhaaji Market added for all selected days!'),
           backgroundColor: Color(0xFF2E7D32),
         ),
       );
@@ -1183,6 +1216,10 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
       _nameController.clear();
       _localityController.clear();
       _landmarkController.clear();
+      setState(() {
+        _selectedDays.clear();
+        _selectedDays.add(DateTime.now().weekday % 7);
+      });
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1324,22 +1361,33 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                   prefixIcon: Icon(Icons.flag_outlined),
                 ),
               ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<int>(
-                value: _selectedDay,
-                decoration: const InputDecoration(
-                  labelText: "Operating Day of Week",
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.calendar_today),
-                ),
-                items: List.generate(
-                  _days.length,
-                  (index) => DropdownMenuItem(
-                    value: index,
-                    child: Text(_days[index]),
-                  ),
-                ),
-                onChanged: (val) => setState(() => _selectedDay = val!),
+              const SizedBox(height: 16),
+              const Text(
+                "Select Operating Day(s):",
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+              ),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 8,
+                runSpacing: 4,
+                children: List.generate(_days.length, (index) {
+                  final isSelected = _selectedDays.contains(index);
+                  return FilterChip(
+                    label: Text(_days[index]),
+                    selected: isSelected,
+                    selectedColor: const Color(0xFFC8E6C9),
+                    checkmarkColor: const Color(0xFF2E7D32),
+                    onSelected: (bool selected) {
+                      setState(() {
+                        if (selected) {
+                          _selectedDays.add(index);
+                        } else if (_selectedDays.length > 1) {
+                          _selectedDays.remove(index);
+                        }
+                      });
+                    },
+                  );
+                }),
               ),
               const SizedBox(height: 20),
               ElevatedButton.icon(
