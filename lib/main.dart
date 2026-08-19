@@ -473,7 +473,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
 }
 
 // ==========================================
-// 2. LIVE MAP (WITH EDIT & DELETE SUPPORT)
+// 2. LIVE MAP INTERACTIVE (WITH EDIT & DELETE SUPPORT)
 // ==========================================
 class BazaarMapScreen extends StatefulWidget {
   const BazaarMapScreen({super.key});
