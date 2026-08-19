@@ -473,7 +473,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
 }
 
 // ==========================================
-// 2. LIVE MAP (WITH EDIT, RATINGS & EXPANDABLE PINPICKER)
+// 2. LIVE MAP (WITH EDIT, IDENTITY ROLES & REVIEWS)
 // ==========================================
 class BazaarMapScreen extends StatefulWidget {
   const BazaarMapScreen({super.key});
@@ -563,7 +563,6 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     return fallback;
   }
 
-  // --- EDIT SPOT DIALOG (EXPANDABLE MAP & TIMINGS) ---
   void _editBazaarDialog(Map<String, dynamic> bazaar) {
     final nameController = TextEditingController(text: bazaar['name'] ?? '');
     final localityController = TextEditingController(text: bazaar['locality'] ?? '');
@@ -831,7 +830,6 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     );
   }
 
-  // --- DELETE SPOT DIALOG ---
   void _deleteBazaar(Map<String, dynamic> bazaar) {
     showDialog(
       context: context,
@@ -873,7 +871,6 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     );
   }
 
-  // --- REVIEWS & DETAILS BOTTOM SHEET ---
   void _showBazaarBottomSheet(Map<String, dynamic> bazaar) {
     showModalBottomSheet(
       context: context,
@@ -1031,7 +1028,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
 }
 
 // ==========================================
-// BOTTOM SHEET WITH INTEGRATED REVIEWS
+// BOTTOM SHEET (REVIEWS + USER ROLE BADGES)
 // ==========================================
 class BazaarDetailsAndReviewsSheet extends StatefulWidget {
   final Map<String, dynamic> bazaar;
@@ -1061,7 +1058,9 @@ class BazaarDetailsAndReviewsSheet extends StatefulWidget {
 
 class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSheet> {
   final TextEditingController _commentController = TextEditingController();
-  final TextEditingController _authorController = TextEditingController(text: 'Shopper');
+  final TextEditingController _nameController = TextEditingController();
+  
+  String _selectedRole = 'Customer'; // 'Customer' or 'Shopkeeper'
   int _userRating = 5;
   bool _isSubmittingReview = false;
   List<Map<String, dynamic>> _reviews = [];
@@ -1097,7 +1096,8 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
     try {
       await supabase.from('bazaar_reviews').insert({
         'bazaar_id': widget.bazaarId,
-        'reviewer_name': _authorController.text.trim().isEmpty ? 'Shopper' : _authorController.text.trim(),
+        'reviewer_name': _nameController.text.trim().isEmpty ? 'Shopper' : _nameController.text.trim(),
+        'user_role': _selectedRole,
         'rating': _userRating,
         'comment': _commentController.text.trim(),
       });
@@ -1213,7 +1213,7 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
             ),
           ),
           const Divider(height: 28),
-          const Text("💬 Comments & Ratings", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const Text("💬 Comments & Community Updates", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Card(
             color: Colors.grey.shade50,
@@ -1226,7 +1226,7 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text("Rate this Bazaar:", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      const Text("Your Rating:", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
                       Row(
                         children: List.generate(5, (idx) {
                           return GestureDetector(
@@ -1234,21 +1234,58 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
                             child: Icon(
                               idx < _userRating ? Icons.star : Icons.star_border,
                               color: Colors.amber,
-                              size: 24,
+                              size: 22,
                             ),
                           );
                         }),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Text("Posting as: ", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey)),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text("🛍️ Customer", style: TextStyle(fontSize: 12)),
+                        selected: _selectedRole == 'Customer',
+                        selectedColor: const Color(0xFFC8E6C9),
+                        onSelected: (val) {
+                          if (val) setState(() => _selectedRole = 'Customer');
+                        },
+                      ),
+                      const SizedBox(width: 6),
+                      ChoiceChip(
+                        label: const Text("🌾 Shopkeeper", style: TextStyle(fontSize: 12)),
+                        selected: _selectedRole == 'Shopkeeper',
+                        selectedColor: const Color(0xFFFFE0B2),
+                        onSelected: (val) {
+                          if (val) setState(() => _selectedRole = 'Shopkeeper');
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   TextField(
-                    controller: _commentController,
+                    controller: _nameController,
                     decoration: const InputDecoration(
-                      hintText: "Add a comment (freshness, parking, crowd...)",
+                      hintText: "Your Name / Stall Name (Optional)",
+                      prefixIcon: Icon(Icons.person_outline, size: 18),
                       border: OutlineInputBorder(),
                       isDense: true,
                     ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _commentController,
+                    decoration: InputDecoration(
+                      hintText: _selectedRole == 'Shopkeeper' 
+                          ? "e.g., Fresh mangoes & organic spinach available today at Stall #4!"
+                          : "e.g., Fresh vegetables, easy bike parking, gets crowded after 6 PM.",
+                      border: const OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                    maxLines: 2,
                   ),
                   const SizedBox(height: 8),
                   Align(
@@ -1258,7 +1295,7 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
                       onPressed: _isSubmittingReview ? null : _addReview,
                       child: _isSubmittingReview
                           ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                          : const Text("Post Review"),
+                          : const Text("Post Update"),
                     ),
                   ),
                 ],
@@ -1269,31 +1306,63 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
           if (_isLoadingReviews)
             const Center(child: CircularProgressIndicator())
           else if (_reviews.isEmpty)
-            const Text("No reviews yet. Be the first to add one!", style: TextStyle(fontSize: 12, color: Colors.grey))
+            const Text("No comments yet. Share first review or stall update!", style: TextStyle(fontSize: 12, color: Colors.grey))
           else
-            ..._reviews.map((r) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: CircleAvatar(
-                    backgroundColor: Colors.green.shade100,
-                    child: Text(
-                      (r['reviewer_name'] ?? 'U')[0].toUpperCase(),
-                      style: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  title: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(r['reviewer_name'] ?? 'Shopper', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                      Row(
-                        children: List.generate(
-                          (r['rating'] as num).toInt(),
-                          (_) => const Icon(Icons.star, color: Colors.amber, size: 14),
+            ..._reviews.map((r) {
+              final isShopkeeper = r['user_role'] == 'Shopkeeper';
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: isShopkeeper ? const Color(0xFFFFF8E1) : Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: isShopkeeper ? Colors.amber.shade300 : Colors.grey.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              r['reviewer_name'] ?? 'Shopper', 
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: isShopkeeper ? const Color(0xFFFFE082) : const Color(0xFFE8F5E9),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                isShopkeeper ? "🌾 Shopkeeper / Farmer" : "🛍️ Shopper",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                  color: isShopkeeper ? Colors.brown.shade800 : Colors.green.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
-                  subtitle: Text(r['comment'] ?? '', style: const TextStyle(fontSize: 13)),
-                )),
+                        Row(
+                          children: List.generate(
+                            (r['rating'] as num).toInt(),
+                            (_) => const Icon(Icons.star, color: Colors.amber, size: 14),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(r['comment'] ?? '', style: const TextStyle(fontSize: 13)),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
