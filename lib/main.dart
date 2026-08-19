@@ -473,7 +473,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
 }
 
 // ==========================================
-// 2. LIVE MAP (WITH EDIT, TIME SELECTION & DELETE)
+// 2. LIVE MAP (WITH EDIT, RATINGS & EXPANDABLE PINPICKER)
 // ==========================================
 class BazaarMapScreen extends StatefulWidget {
   const BazaarMapScreen({super.key});
@@ -563,7 +563,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     return fallback;
   }
 
-  // --- EDIT SPOT DIALOG (ATOMIC SAVE & NO CONFLICT ERRORS) ---
+  // --- EDIT SPOT DIALOG (EXPANDABLE MAP & TIMINGS) ---
   void _editBazaarDialog(Map<String, dynamic> bazaar) {
     final nameController = TextEditingController(text: bazaar['name'] ?? '');
     final localityController = TextEditingController(text: bazaar['locality'] ?? '');
@@ -587,6 +587,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
 
     final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
     bool isSavingEdit = false;
+    bool isMapExpanded = false;
 
     showDialog(
       context: context,
@@ -691,13 +692,23 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                     }),
                   ),
                   const SizedBox(height: 14),
-                  const Text(
-                    "📍 Tap map to relocate pin:",
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        "📍 Relocate Pin on Map:",
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                      ),
+                      IconButton(
+                        tooltip: isMapExpanded ? "Collapse" : "Expand Map",
+                        icon: Icon(isMapExpanded ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.green.shade800),
+                        onPressed: () => setDialogState(() => isMapExpanded = !isMapExpanded),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 6),
-                  Container(
-                    height: 160,
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    height: isMapExpanded ? 320 : 160,
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.grey.shade300),
@@ -760,7 +771,6 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                         final String startTimeFormatted = _formatTimeOfDay(startTime);
                         final String endTimeFormatted = _formatTimeOfDay(endTime);
 
-                        // 1. Update metadata
                         await supabase.from('bazaars').update({
                           'name': nameController.text.trim(),
                           'locality': localityController.text.trim(),
@@ -769,7 +779,6 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                           'longitude': updatedLng,
                         }).eq('id', bazaarId);
 
-                        // 2. Remove unselected days first
                         final allDays = [0, 1, 2, 3, 4, 5, 6];
                         final daysToRemove = allDays.where((d) => !selectedDays.contains(d)).toList();
 
@@ -781,7 +790,6 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                               .inFilter('day_of_week', daysToRemove);
                         }
 
-                        // 3. Upsert selected days atomically
                         final upsertList = selectedDays.map((day) => {
                           'bazaar_id': bazaarId,
                           'day_of_week': day,
@@ -865,9 +873,11 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     );
   }
 
+  // --- REVIEWS & DETAILS BOTTOM SHEET ---
   void _showBazaarBottomSheet(Map<String, dynamic> bazaar) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       ),
@@ -875,101 +885,31 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
         final schedules = bazaar['bazaar_schedules'] as List<dynamic>? ?? [];
         final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
         final bool isToday = _isBazaarToday(bazaar);
+        final String bazaarId = bazaar['id'];
 
-        return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      bazaar['name'] ?? 'Bhaaji Market',
-                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: isToday ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      isToday ? "ACTIVE TODAY" : "OTHER DAYS",
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
-                        color: isToday ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
-              Text(
-                "📍 Locality: ${bazaar['locality']} ${bazaar['landmark'] != null ? '(${bazaar['landmark']})' : ''}",
-                style: TextStyle(color: Colors.grey.shade700),
-              ),
-              const SizedBox(height: 10),
-              const Text("Operating Days & Times:", style: TextStyle(fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              if (schedules.isEmpty)
-                const Text("No fixed schedules added yet.")
-              else
-                ...schedules.map((s) => Text("• ${days[s['day_of_week']]}: ${s['start_time']} - ${s['end_time']}")),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.edit, size: 18),
-                      label: const Text("Edit Spot"),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _editBazaarDialog(bazaar);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
-                      icon: const Icon(Icons.delete_outline, size: 18),
-                      label: const Text("Delete"),
-                      onPressed: () {
-                        Navigator.pop(context);
-                        _deleteBazaar(bazaar);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green.shade700,
-                    foregroundColor: Colors.white,
-                  ),
-                  icon: const Icon(Icons.navigation),
-                  label: const Text("Navigate via Google Maps"),
-                  onPressed: () async {
-                    Navigator.pop(context);
-                    final uri = Uri.parse(
-                      "https://www.google.com/maps/search/?api=1&query=${bazaar['latitude']},${bazaar['longitude']}",
-                    );
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
-                    }
-                  },
-                ),
-              ),
-            ],
-          ),
+        return DraggableScrollableSheet(
+          initialChildSize: 0.70,
+          minChildSize: 0.45,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) {
+            return BazaarDetailsAndReviewsSheet(
+              bazaar: bazaar,
+              bazaarId: bazaarId,
+              isToday: isToday,
+              schedules: schedules,
+              days: days,
+              scrollController: scrollController,
+              onEdit: () {
+                Navigator.pop(context);
+                _editBazaarDialog(bazaar);
+              },
+              onDelete: () {
+                Navigator.pop(context);
+                _deleteBazaar(bazaar);
+              },
+            );
+          },
         );
       },
     );
@@ -1086,6 +1026,276 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                 ),
               ],
             ),
+    );
+  }
+}
+
+// ==========================================
+// BOTTOM SHEET WITH INTEGRATED REVIEWS
+// ==========================================
+class BazaarDetailsAndReviewsSheet extends StatefulWidget {
+  final Map<String, dynamic> bazaar;
+  final String bazaarId;
+  final bool isToday;
+  final List<dynamic> schedules;
+  final List<String> days;
+  final ScrollController scrollController;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
+
+  const BazaarDetailsAndReviewsSheet({
+    super.key,
+    required this.bazaar,
+    required this.bazaarId,
+    required this.isToday,
+    required this.schedules,
+    required this.days,
+    required this.scrollController,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  @override
+  State<BazaarDetailsAndReviewsSheet> createState() => _BazaarDetailsAndReviewsSheetState();
+}
+
+class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSheet> {
+  final TextEditingController _commentController = TextEditingController();
+  final TextEditingController _authorController = TextEditingController(text: 'Shopper');
+  int _userRating = 5;
+  bool _isSubmittingReview = false;
+  List<Map<String, dynamic>> _reviews = [];
+  bool _isLoadingReviews = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchReviews();
+  }
+
+  Future<void> _fetchReviews() async {
+    try {
+      final res = await supabase
+          .from('bazaar_reviews')
+          .select('*')
+          .eq('bazaar_id', widget.bazaarId)
+          .order('created_at', ascending: false);
+      if (mounted) {
+        setState(() {
+          _reviews = List<Map<String, dynamic>>.from(res);
+          _isLoadingReviews = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isLoadingReviews = false);
+    }
+  }
+
+  Future<void> _addReview() async {
+    if (_commentController.text.trim().isEmpty) return;
+    setState(() => _isSubmittingReview = true);
+    try {
+      await supabase.from('bazaar_reviews').insert({
+        'bazaar_id': widget.bazaarId,
+        'reviewer_name': _authorController.text.trim().isEmpty ? 'Shopper' : _authorController.text.trim(),
+        'rating': _userRating,
+        'comment': _commentController.text.trim(),
+      });
+      _commentController.clear();
+      _fetchReviews();
+    } catch (_) {}
+    finally {
+      if (mounted) setState(() => _isSubmittingReview = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double avgRating = _reviews.isEmpty
+        ? 0.0
+        : (_reviews.map((r) => r['rating'] as int).reduce((a, b) => a + b) / _reviews.length);
+
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: ListView(
+        controller: widget.scrollController,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  widget.bazaar['name'] ?? 'Bhaaji Market',
+                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: widget.isToday ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text(
+                  widget.isToday ? "ACTIVE TODAY" : "OTHER DAYS",
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: widget.isToday ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            "📍 Locality: ${widget.bazaar['locality']} ${widget.bazaar['landmark'] != null ? '(${widget.bazaar['landmark']})' : ''}",
+            style: TextStyle(color: Colors.grey.shade700),
+          ),
+          if (_reviews.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                const Icon(Icons.star, color: Colors.amber, size: 18),
+                const SizedBox(width: 4),
+                Text(
+                  "${avgRating.toStringAsFixed(1)} / 5.0 (${_reviews.length} reviews)",
+                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 10),
+          const Text("Operating Days & Times:", style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          if (widget.schedules.isEmpty)
+            const Text("No fixed schedules added yet.")
+          else
+            ...widget.schedules.map((s) => Text("• ${widget.days[s['day_of_week']]}: ${s['start_time']} - ${s['end_time']}")),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.edit, size: 18),
+                  label: const Text("Edit Spot"),
+                  onPressed: widget.onEdit,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                  icon: const Icon(Icons.delete_outline, size: 18),
+                  label: const Text("Delete"),
+                  onPressed: widget.onDelete,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green.shade700,
+                foregroundColor: Colors.white,
+              ),
+              icon: const Icon(Icons.navigation),
+              label: const Text("Navigate via Google Maps"),
+              onPressed: () async {
+                final uri = Uri.parse(
+                  "https://www.google.com/maps/search/?api=1&query=${widget.bazaar['latitude']},${widget.bazaar['longitude']}",
+                );
+                if (await canLaunchUrl(uri)) {
+                  await launchUrl(uri, mode: LaunchMode.externalApplication);
+                }
+              },
+            ),
+          ),
+          const Divider(height: 28),
+          const Text("💬 Comments & Ratings", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          Card(
+            color: Colors.grey.shade50,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text("Rate this Bazaar:", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                      Row(
+                        children: List.generate(5, (idx) {
+                          return GestureDetector(
+                            onTap: () => setState(() => _userRating = idx + 1),
+                            child: Icon(
+                              idx < _userRating ? Icons.star : Icons.star_border,
+                              color: Colors.amber,
+                              size: 24,
+                            ),
+                          );
+                        }),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _commentController,
+                    decoration: const InputDecoration(
+                      hintText: "Add a comment (freshness, parking, crowd...)",
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32), foregroundColor: Colors.white),
+                      onPressed: _isSubmittingReview ? null : _addReview,
+                      child: _isSubmittingReview
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                          : const Text("Post Review"),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_isLoadingReviews)
+            const Center(child: CircularProgressIndicator())
+          else if (_reviews.isEmpty)
+            const Text("No reviews yet. Be the first to add one!", style: TextStyle(fontSize: 12, color: Colors.grey))
+          else
+            ..._reviews.map((r) => ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: CircleAvatar(
+                    backgroundColor: Colors.green.shade100,
+                    child: Text(
+                      (r['reviewer_name'] ?? 'U')[0].toUpperCase(),
+                      style: TextStyle(color: Colors.green.shade900, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  title: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(r['reviewer_name'] ?? 'Shopper', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                      Row(
+                        children: List.generate(
+                          (r['rating'] as num).toInt(),
+                          (_) => const Icon(Icons.star, color: Colors.amber, size: 14),
+                        ),
+                      ),
+                    ],
+                  ),
+                  subtitle: Text(r['comment'] ?? '', style: const TextStyle(fontSize: 13)),
+                )),
+        ],
+      ),
     );
   }
 }
@@ -1228,6 +1438,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
 
   bool _isSaving = false;
   bool _isLocating = false;
+  bool _isMapFullscreen = false;
 
   double _pinnedLat = 18.5204;
   double _pinnedLng = 73.8567;
@@ -1366,16 +1577,25 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                             "📍 Pinpoint Location",
                             style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
-                          TextButton.icon(
-                            icon: _isLocating
-                                ? const SizedBox(
-                                    width: 14,
-                                    height: 14,
-                                    child: CircularProgressIndicator(strokeWidth: 2),
-                                  )
-                                : const Icon(Icons.my_location, size: 16),
-                            label: const Text("Use Live GPS"),
-                            onPressed: _isLocating ? null : _pinpointCurrentLocation,
+                          Row(
+                            children: [
+                              TextButton.icon(
+                                icon: _isLocating
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(strokeWidth: 2),
+                                      )
+                                    : const Icon(Icons.my_location, size: 16),
+                                label: const Text("GPS"),
+                                onPressed: _isLocating ? null : _pinpointCurrentLocation,
+                              ),
+                              IconButton(
+                                tooltip: _isMapFullscreen ? "Collapse" : "Expand Map",
+                                icon: Icon(_isMapFullscreen ? Icons.fullscreen_exit : Icons.fullscreen, color: Colors.green.shade800),
+                                onPressed: () => setState(() => _isMapFullscreen = !_isMapFullscreen),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -1384,8 +1604,9 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                         style: TextStyle(fontSize: 12, color: Colors.grey),
                       ),
                       const SizedBox(height: 8),
-                      Container(
-                        height: 200,
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 250),
+                        height: _isMapFullscreen ? 360 : 200,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(8),
                           border: Border.all(color: Colors.grey.shade300),
