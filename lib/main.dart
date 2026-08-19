@@ -546,13 +546,17 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     return schedules.any((s) => s['day_of_week'] == todayWeekday);
   }
 
-  // --- EDIT SPOT DIALOG ---
+  // --- EDIT SPOT DIALOG (WITH INTERACTIVE PIN MOVEMENT) ---
   void _editBazaarDialog(Map<String, dynamic> bazaar) {
     final nameController = TextEditingController(text: bazaar['name'] ?? '');
     final localityController = TextEditingController(text: bazaar['locality'] ?? '');
     final landmarkController = TextEditingController(text: bazaar['landmark'] ?? '');
     final schedules = bazaar['bazaar_schedules'] as List<dynamic>? ?? [];
-    
+
+    double updatedLat = (bazaar['latitude'] as num).toDouble();
+    double updatedLng = (bazaar['longitude'] as num).toDouble();
+    final MapController editMapController = MapController();
+
     int selectedDay = schedules.isNotEmpty ? (schedules[0]['day_of_week'] ?? 0) : 0;
     final days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -561,35 +565,107 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("Edit Bazaar Spot"),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  decoration: const InputDecoration(labelText: "Bazaar Name", border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: localityController,
-                  decoration: const InputDecoration(labelText: "Locality / Area", border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: landmarkController,
-                  decoration: const InputDecoration(labelText: "Landmark", border: OutlineInputBorder()),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<int>(
-                  value: selectedDay,
-                  decoration: const InputDecoration(labelText: "Operating Day", border: OutlineInputBorder()),
-                  items: List.generate(
-                    days.length,
-                    (idx) => DropdownMenuItem(value: idx, child: Text(days[idx])),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    decoration: const InputDecoration(
+                      labelText: "Bazaar Name",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.storefront),
+                    ),
                   ),
-                  onChanged: (val) => setDialogState(() => selectedDay = val!),
-                ),
-              ],
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: localityController,
+                    decoration: const InputDecoration(
+                      labelText: "Locality / Area",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.location_city),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: landmarkController,
+                    decoration: const InputDecoration(
+                      labelText: "Landmark",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.flag_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  DropdownButtonFormField<int>(
+                    value: selectedDay,
+                    decoration: const InputDecoration(
+                      labelText: "Operating Day",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.calendar_today),
+                    ),
+                    items: List.generate(
+                      days.length,
+                      (idx) => DropdownMenuItem(value: idx, child: Text(days[idx])),
+                    ),
+                    onChanged: (val) => setDialogState(() => selectedDay = val!),
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
+                    "📍 Tap on map to reposition pin:",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 180,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: FlutterMap(
+                      mapController: editMapController,
+                      options: MapOptions(
+                        initialCenter: latlong.LatLng(updatedLat, updatedLng),
+                        initialZoom: 15.0,
+                        onTap: (_, point) {
+                          setDialogState(() {
+                            updatedLat = point.latitude;
+                            updatedLng = point.longitude;
+                          });
+                        },
+                      ),
+                      children: [
+                        TileLayer(
+                          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                          userAgentPackageName: 'com.example.aathawade_bazaar',
+                        ),
+                        MarkerLayer(
+                          markers: [
+                            Marker(
+                              point: latlong.LatLng(updatedLat, updatedLng),
+                              width: 40,
+                              height: 40,
+                              child: const Icon(
+                                Icons.location_on,
+                                color: Colors.red,
+                                size: 40,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    "Position: ${updatedLat.toStringAsFixed(5)}, ${updatedLng.toStringAsFixed(5)}",
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -598,13 +674,18 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
               child: const Text("Cancel"),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32), foregroundColor: Colors.white),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2E7D32),
+                foregroundColor: Colors.white,
+              ),
               onPressed: () async {
                 final bazaarId = bazaar['id'];
                 await supabase.from('bazaars').update({
                   'name': nameController.text.trim(),
                   'locality': localityController.text.trim(),
                   'landmark': landmarkController.text.trim(),
+                  'latitude': updatedLat,
+                  'longitude': updatedLng,
                 }).eq('id', bazaarId);
 
                 if (schedules.isNotEmpty) {
@@ -617,7 +698,10 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                 if (ctx.mounted) Navigator.pop(ctx);
                 _fetchBazaarsForMap();
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text("Bazaar updated successfully!"), backgroundColor: Color(0xFF2E7D32)),
+                  const SnackBar(
+                    content: Text("Bazaar spot updated!"),
+                    backgroundColor: Color(0xFF2E7D32),
+                  ),
                 );
               },
               child: const Text("Save Changes"),
