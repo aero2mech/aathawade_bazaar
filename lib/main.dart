@@ -31,7 +31,7 @@ class AthawadeBazaarApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Shetkari Athawade Bazaar',
+      title: 'Bhaaji Market',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
@@ -164,7 +164,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   void _shareApp() async {
     const String shareText =
-        '🥬 Find local Shetkari Athawade Bazaars near you with live schedules, GPS navigation, and community-pinpointed locations!\n\nAccess here: https://lmuvkqsohmodrxveuxdr.supabase.co';
+        '🥬 *Bhaaji Market - Shetkari Athawade Bazaar*\n\n'
+        'Find weekly farmers markets near you with live schedules, timings, and GPS navigation!\n\n'
+        '📲 Download here:\n'
+        'https://github.com/aero2mech/aathawade_bazaar/releases/latest';
 
     final Uri sendUri = Uri.parse(
         'https://api.whatsapp.com/send?text=${Uri.encodeComponent(shareText)}');
@@ -172,7 +175,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     try {
       await launchUrl(sendUri, mode: LaunchMode.externalApplication);
     } catch (_) {
-      final Uri smsUri = Uri.parse('sms:?body=${Uri.encodeComponent(shareText)}');
+      final Uri smsUri =
+          Uri.parse('sms:?body=${Uri.encodeComponent(shareText)}');
       await launchUrl(smsUri, mode: LaunchMode.externalApplication);
     }
   }
@@ -181,11 +185,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Shetkari Athawade Bazaar'),
+        title: const Text('Bhaaji Market'),
         actions: [
           IconButton(
             icon: const Icon(Icons.share),
-            tooltip: 'Share App with Friends',
+            tooltip: 'Share App',
             onPressed: _shareApp,
           ),
         ],
@@ -231,7 +235,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 }
 
 // ==========================================
-// 1. TODAY'S ACTIVE MARKETS (REALTIME)
+// 1. TODAY'S ACTIVE MARKETS
 // ==========================================
 class TodayBazaarsScreen extends StatefulWidget {
   const TodayBazaarsScreen({super.key});
@@ -302,15 +306,9 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
           );
           _userLat = pos.latitude;
           _userLng = pos.longitude;
-        } else {
-          _statusNote = "GPS permission denied. Showing default center.";
         }
-      } else {
-        _statusNote = "Location service is off. Using default center.";
       }
-    } catch (_) {
-      _statusNote = "Using default center.";
-    }
+    } catch (_) {}
 
     final int todayWeekday = DateTime.now().weekday % 7;
 
@@ -331,7 +329,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _statusNote = "Query error: $e";
+          _statusNote = "Query notice: $e";
           _isLoading = false;
         });
       }
@@ -410,7 +408,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
                                       children: [
                                         Expanded(
                                           child: Text(
-                                            item['name'] ?? 'Shetkari Bazaar',
+                                            item['name'] ?? 'Bhaaji Market',
                                             style: const TextStyle(
                                                 fontSize: 18,
                                                 fontWeight: FontWeight.bold),
@@ -475,7 +473,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
 }
 
 // ==========================================
-// 2. INTERACTIVE LIVE MAP (REALTIME DYNAMIC MARKERS)
+// 2. LIVE MAP (WITH EDIT & DELETE SUPPORT)
 // ==========================================
 class BazaarMapScreen extends StatefulWidget {
   const BazaarMapScreen({super.key});
@@ -529,7 +527,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
 
     try {
       final data = await supabase.from('bazaars').select(
-          'id, name, locality, landmark, latitude, longitude, bazaar_schedules(day_of_week, start_time, end_time)');
+          'id, name, locality, landmark, latitude, longitude, bazaar_schedules(id, day_of_week, start_time, end_time)');
 
       if (mounted) {
         setState(() {
@@ -546,6 +544,120 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     final int todayWeekday = DateTime.now().weekday % 7;
     final schedules = bazaar['bazaar_schedules'] as List<dynamic>? ?? [];
     return schedules.any((s) => s['day_of_week'] == todayWeekday);
+  }
+
+  // --- EDIT SPOT DIALOG ---
+  void _editBazaarDialog(Map<String, dynamic> bazaar) {
+    final nameController = TextEditingController(text: bazaar['name'] ?? '');
+    final localityController = TextEditingController(text: bazaar['locality'] ?? '');
+    final landmarkController = TextEditingController(text: bazaar['landmark'] ?? '');
+    final schedules = bazaar['bazaar_schedules'] as List<dynamic>? ?? [];
+    
+    int selectedDay = schedules.isNotEmpty ? (schedules[0]['day_of_week'] ?? 0) : 0;
+    final days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Edit Bazaar Spot"),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: "Bazaar Name", border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: localityController,
+                  decoration: const InputDecoration(labelText: "Locality / Area", border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: landmarkController,
+                  decoration: const InputDecoration(labelText: "Landmark", border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<int>(
+                  value: selectedDay,
+                  decoration: const InputDecoration(labelText: "Operating Day", border: OutlineInputBorder()),
+                  items: List.generate(
+                    days.length,
+                    (idx) => DropdownMenuItem(value: idx, child: Text(days[idx])),
+                  ),
+                  onChanged: (val) => setDialogState(() => selectedDay = val!),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32), foregroundColor: Colors.white),
+              onPressed: () async {
+                final bazaarId = bazaar['id'];
+                await supabase.from('bazaars').update({
+                  'name': nameController.text.trim(),
+                  'locality': localityController.text.trim(),
+                  'landmark': landmarkController.text.trim(),
+                }).eq('id', bazaarId);
+
+                if (schedules.isNotEmpty) {
+                  await supabase
+                      .from('bazaar_schedules')
+                      .update({'day_of_week': selectedDay})
+                      .eq('bazaar_id', bazaarId);
+                }
+
+                if (ctx.mounted) Navigator.pop(ctx);
+                _fetchBazaarsForMap();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Bazaar updated successfully!"), backgroundColor: Color(0xFF2E7D32)),
+                );
+              },
+              child: const Text("Save Changes"),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- DELETE SPOT DIALOG ---
+  void _deleteBazaar(Map<String, dynamic> bazaar) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text("Delete Bazaar Spot?"),
+        content: Text("Are you sure you want to permanently remove \"${bazaar['name']}\"?"),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+            onPressed: () async {
+              final bazaarId = bazaar['id'];
+              await supabase.from('bazaar_schedules').delete().eq('bazaar_id', bazaarId);
+              await supabase.from('bazaars').delete().eq('id', bazaarId);
+
+              if (ctx.mounted) Navigator.pop(ctx);
+              _fetchBazaarsForMap();
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("Bazaar spot removed."), backgroundColor: Colors.red),
+              );
+            },
+            child: const Text("Delete"),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showBazaarBottomSheet(Map<String, dynamic> bazaar) {
@@ -570,17 +682,14 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      bazaar['name'] ?? 'Shetkari Bazaar',
-                      style: const TextStyle(
-                          fontSize: 20, fontWeight: FontWeight.bold),
+                      bazaar['name'] ?? 'Bhaaji Market',
+                      style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                   ),
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: isToday
-                          ? const Color(0xFFE8F5E9)
-                          : const Color(0xFFFFF3E0),
+                      color: isToday ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
@@ -588,9 +697,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.bold,
-                        color: isToday
-                            ? const Color(0xFF2E7D32)
-                            : const Color(0xFFE65100),
+                        color: isToday ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
                       ),
                     ),
                   ),
@@ -601,16 +708,41 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                 "📍 Locality: ${bazaar['locality']} ${bazaar['landmark'] != null ? '(${bazaar['landmark']})' : ''}",
                 style: TextStyle(color: Colors.grey.shade700),
               ),
-              const SizedBox(height: 12),
-              const Text("Operating Days & Times:",
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              const Text("Operating Days & Times:", style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 4),
               if (schedules.isEmpty)
                 const Text("No fixed schedules added yet.")
               else
-                ...schedules.map((s) => Text(
-                    "• ${days[s['day_of_week']]}: ${s['start_time']} - ${s['end_time']}")),
-              const SizedBox(height: 20),
+                ...schedules.map((s) => Text("• ${days[s['day_of_week']]}: ${s['start_time']} - ${s['end_time']}")),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.edit, size: 18),
+                      label: const Text("Edit Spot"),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _editBazaarDialog(bazaar);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                      icon: const Icon(Icons.delete_outline, size: 18),
+                      label: const Text("Delete"),
+                      onPressed: () {
+                        Navigator.pop(context);
+                        _deleteBazaar(bazaar);
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
@@ -662,18 +794,16 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate:
-                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.example.aathawade_bazaar',
                     ),
                     MarkerLayer(
                       markers: [
                         Marker(
                           point: latlong.LatLng(_centerLat, _centerLng),
-                          width: 40,
-                          height: 40,
-                          child: const Icon(Icons.my_location,
-                              color: Colors.blue, size: 30),
+                          width: 32,
+                          height: 32,
+                          child: const Icon(Icons.my_location, color: Colors.blue, size: 26),
                         ),
                         ..._allBazaars.map((bazaar) {
                           final double lat = (bazaar['latitude'] as num).toDouble();
@@ -688,9 +818,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                               onTap: () => _showBazaarBottomSheet(bazaar),
                               child: Container(
                                 decoration: BoxDecoration(
-                                  color: isToday
-                                      ? const Color(0xFF2E7D32) // Forest Green for Today
-                                      : const Color(0xFFE65100), // Clean Orange for Other Days
+                                  color: isToday ? const Color(0xFF2E7D32) : const Color(0xFFE65100),
                                   shape: BoxShape.circle,
                                   border: Border.all(color: Colors.white, width: 2.0),
                                   boxShadow: [
@@ -718,17 +846,12 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                   top: 12,
                   right: 12,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.95),
                       borderRadius: BorderRadius.circular(8),
                       boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black12,
-                          blurRadius: 4,
-                          offset: Offset(0, 2),
-                        ),
+                        BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
                       ],
                     ),
                     child: const Column(
@@ -738,30 +861,18 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            CircleAvatar(
-                              radius: 5,
-                              backgroundColor: Color(0xFF2E7D32),
-                            ),
+                            CircleAvatar(radius: 5, backgroundColor: Color(0xFF2E7D32)),
                             SizedBox(width: 6),
-                            Text("Open Today",
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600)),
+                            Text("Open Today", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                           ],
                         ),
                         SizedBox(height: 4),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            CircleAvatar(
-                              radius: 5,
-                              backgroundColor: Color(0xFFE65100),
-                            ),
+                            CircleAvatar(radius: 5, backgroundColor: Color(0xFFE65100)),
                             SizedBox(width: 6),
-                            Text("Other Days",
-                                style: TextStyle(
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w600)),
+                            Text("Other Days", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ],
@@ -810,8 +921,7 @@ class _ExploreBazaarsScreenState extends State<ExploreBazaarsScreen> {
     try {
       final response = await supabase
           .from('bazaar_schedules')
-          .select(
-              'day_of_week, start_time, end_time, bazaars(name, locality, landmark, latitude, longitude)')
+          .select('day_of_week, start_time, end_time, bazaars(name, locality, landmark, latitude, longitude)')
           .eq('day_of_week', _selectedDay);
 
       if (mounted) {
@@ -857,9 +967,7 @@ class _ExploreBazaarsScreenState extends State<ExploreBazaarsScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : _results.isEmpty
-                    ? Center(
-                        child: Text(
-                            "No bazaars registered for ${_days[_selectedDay]}."))
+                    ? Center(child: Text("No bazaars registered for ${_days[_selectedDay]}."))
                     : ListView.builder(
                         padding: const EdgeInsets.all(12),
                         itemCount: _results.length,
@@ -872,13 +980,11 @@ class _ExploreBazaarsScreenState extends State<ExploreBazaarsScreen> {
                             child: ListTile(
                               leading: const CircleAvatar(
                                 backgroundColor: Color(0xFFE8F5E9),
-                                child: Icon(Icons.store,
-                                    color: Color(0xFF2E7D32)),
+                                child: Icon(Icons.store, color: Color(0xFF2E7D32)),
                               ),
                               title: Text(
-                                bazaar?['name'] ?? 'Athawade Bazaar',
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.bold),
+                                bazaar?['name'] ?? 'Bhaaji Market',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
                               ),
                               subtitle: Text(
                                 "📍 ${bazaar?['locality'] ?? ''} • ⏰ ${item['start_time']} - ${item['end_time']}",
@@ -943,8 +1049,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
         perm = await Geolocator.requestPermission();
       }
 
-      if (perm == LocationPermission.whileInUse ||
-          perm == LocationPermission.always) {
+      if (perm == LocationPermission.whileInUse || perm == LocationPermission.always) {
         Position pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 5),
@@ -986,8 +1091,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-              '📍 Athawade Bazaar added! Synced live across all devices.'),
+          content: Text('📍 Bhaaji Market added! Synced live across all devices.'),
           backgroundColor: Color(0xFF2E7D32),
         ),
       );
@@ -998,9 +1102,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text('Failed to save: $e'),
-            backgroundColor: Colors.red),
+        SnackBar(content: Text('Failed to save: $e'), backgroundColor: Colors.red),
       );
     } finally {
       if (mounted) setState(() => _isSaving = false);
@@ -1019,8 +1121,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
             children: [
               Card(
                 elevation: 2,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
                   padding: const EdgeInsets.all(12.0),
                   child: Column(
@@ -1031,21 +1132,18 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                         children: [
                           const Text(
                             "📍 Pinpoint Location",
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold),
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                           TextButton.icon(
                             icon: _isLocating
                                 ? const SizedBox(
                                     width: 14,
                                     height: 14,
-                                    child: CircularProgressIndicator(
-                                        strokeWidth: 2),
+                                    child: CircularProgressIndicator(strokeWidth: 2),
                                   )
                                 : const Icon(Icons.my_location, size: 16),
                             label: const Text("Use Live GPS"),
-                            onPressed:
-                                _isLocating ? null : _pinpointCurrentLocation,
+                            onPressed: _isLocating ? null : _pinpointCurrentLocation,
                           ),
                         ],
                       ),
@@ -1064,8 +1162,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                         child: FlutterMap(
                           mapController: _miniMapController,
                           options: MapOptions(
-                            initialCenter:
-                                latlong.LatLng(_pinnedLat, _pinnedLng),
+                            initialCenter: latlong.LatLng(_pinnedLat, _pinnedLng),
                             initialZoom: 14.0,
                             onTap: (_, point) {
                               setState(() {
@@ -1076,21 +1173,19 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                           ),
                           children: [
                             TileLayer(
-                              urlTemplate:
-                                  'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                              userAgentPackageName:
-                                  'com.example.aathawade_bazaar',
+                              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                              userAgentPackageName: 'com.example.aathawade_bazaar',
                             ),
                             MarkerLayer(
                               markers: [
                                 Marker(
                                   point: latlong.LatLng(_pinnedLat, _pinnedLng),
-                                  width: 45,
-                                  height: 45,
+                                  width: 36,
+                                  height: 36,
                                   child: const Icon(
                                     Icons.location_on,
                                     color: Colors.red,
-                                    size: 45,
+                                    size: 36,
                                   ),
                                 ),
                               ],
@@ -1101,13 +1196,11 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          const Icon(Icons.pin_drop,
-                              size: 16, color: Colors.red),
+                          const Icon(Icons.pin_drop, size: 16, color: Colors.red),
                           const SizedBox(width: 4),
                           Text(
                             "Selected: ${_pinnedLat.toStringAsFixed(5)}, ${_pinnedLng.toStringAsFixed(5)}",
-                            style: const TextStyle(
-                                fontSize: 12, fontWeight: FontWeight.bold),
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
                           ),
                         ],
                       ),
@@ -1120,7 +1213,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                 controller: _nameController,
                 decoration: const InputDecoration(
                   labelText: "Bazaar Name",
-                  hintText: "e.g., Balewadi Shetkari Bazaar",
+                  hintText: "e.g., Ravet Shetkari Bazaar",
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.storefront),
                 ),
@@ -1131,7 +1224,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                 controller: _localityController,
                 decoration: const InputDecoration(
                   labelText: "Locality / Area",
-                  hintText: "e.g., Baner, Wakad, Kothrud",
+                  hintText: "e.g., Ravet, Punawale, Wakad",
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.location_city),
                 ),
@@ -1142,7 +1235,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                 controller: _landmarkController,
                 decoration: const InputDecoration(
                   labelText: "Landmark (Optional)",
-                  hintText: "e.g., Opposite Cummins ground",
+                  hintText: "e.g., Near D-Mart / Bus Stop",
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.flag_outlined),
                 ),
@@ -1170,8 +1263,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   backgroundColor: const Color(0xFF2E7D32),
                   foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
                 icon: const Icon(Icons.check_circle_outline),
                 onPressed: _isSaving ? null : _submitBazaar,
@@ -1179,11 +1271,9 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                     ? const SizedBox(
                         height: 20,
                         width: 20,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2),
+                        child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                       )
-                    : const Text("Save & Publish Live to All Devices",
-                        style: TextStyle(fontSize: 16)),
+                    : const Text("Save & Publish Live", style: TextStyle(fontSize: 16)),
               ),
             ],
           ),
