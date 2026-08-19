@@ -473,7 +473,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
 }
 
 // ==========================================
-// 2. LIVE MAP INTERACTIVE (WITH EDIT & DELETE SUPPORT)
+// 2. LIVE MAP (WITH EDIT, TIME SELECTION & DELETE)
 // ==========================================
 class BazaarMapScreen extends StatefulWidget {
   const BazaarMapScreen({super.key});
@@ -546,7 +546,24 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     return schedules.any((s) => s['day_of_week'] == todayWeekday);
   }
 
-  // --- EDIT SPOT DIALOG (MULTI-DAY SELECTION & PIN REPOSITIONING) ---
+  String _formatTimeOfDay(TimeOfDay tod) {
+    final String hour = tod.hour.toString().padLeft(2, '0');
+    final String min = tod.minute.toString().padLeft(2, '0');
+    return '$hour:$min:00';
+  }
+
+  TimeOfDay _parseTimeString(String? timeStr, TimeOfDay fallback) {
+    if (timeStr == null || timeStr.isEmpty) return fallback;
+    try {
+      final parts = timeStr.split(':');
+      if (parts.length >= 2) {
+        return TimeOfDay(hour: int.parse(parts[0]), minute: int.parse(parts[1]));
+      }
+    } catch (_) {}
+    return fallback;
+  }
+
+  // --- EDIT SPOT DIALOG (MULTI-DAY, EDITABLE TIMINGS & PIN MOVEMENT) ---
   void _editBazaarDialog(Map<String, dynamic> bazaar) {
     final nameController = TextEditingController(text: bazaar['name'] ?? '');
     final localityController = TextEditingController(text: bazaar['locality'] ?? '');
@@ -557,15 +574,24 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
     double updatedLng = (bazaar['longitude'] as num).toDouble();
     final MapController editMapController = MapController();
 
-    // Populate existing active days
     final Set<int> selectedDays = schedules
         .map((s) => (s['day_of_week'] as num).toInt())
         .toSet();
+    if (selectedDays.isEmpty) selectedDays.add(DateTime.now().weekday % 7);
+
+    // Initial timings
+    String? initialStartStr = schedules.isNotEmpty ? schedules[0]['start_time'] : null;
+    String? initialEndStr = schedules.isNotEmpty ? schedules[0]['end_time'] : null;
+
+    TimeOfDay startTime = _parseTimeString(initialStartStr, const TimeOfDay(hour: 15, minute: 30));
+    TimeOfDay endTime = _parseTimeString(initialEndStr, const TimeOfDay(hour: 21, minute: 0));
 
     final days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    bool isSavingEdit = false;
 
     showDialog(
       context: context,
+      barrierDismissible: false,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
           title: const Text("Edit Bazaar Spot"),
@@ -604,6 +630,41 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
+                    "⏰ Operating Timings:",
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.access_time, size: 16),
+                          label: Text("Opens: ${startTime.format(context)}"),
+                          onPressed: () async {
+                            final picked = await showTimePicker(context: context, initialTime: startTime);
+                            if (picked != null) {
+                              setDialogState(() => startTime = picked);
+                            }
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.access_time_filled, size: 16),
+                          label: Text("Closes: ${endTime.format(context)}"),
+                          onPressed: () async {
+                            final picked = await showTimePicker(context: context, initialTime: endTime);
+                            if (picked != null) {
+                              setDialogState(() => endTime = picked);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  const Text(
                     "📅 Select Operating Days:",
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
                   ),
@@ -632,7 +693,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    "📍 Tap map to reposition pin:",
+                    "📍 Tap map to relocate pin:",
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
                   ),
                   const SizedBox(height: 6),
@@ -683,7 +744,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(ctx),
+              onPressed: isSavingEdit ? null : () => Navigator.pop(ctx),
               child: const Text("Cancel"),
             ),
             ElevatedButton(
@@ -691,38 +752,59 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                 backgroundColor: const Color(0xFF2E7D32),
                 foregroundColor: Colors.white,
               ),
-              onPressed: () async {
-                final bazaarId = bazaar['id'];
-                
-                // 1. Update Bazaar Metadata
-                await supabase.from('bazaars').update({
-                  'name': nameController.text.trim(),
-                  'locality': localityController.text.trim(),
-                  'landmark': landmarkController.text.trim(),
-                  'latitude': updatedLat,
-                  'longitude': updatedLng,
-                }).eq('id', bazaarId);
+              onPressed: isSavingEdit
+                  ? null
+                  : () async {
+                      setDialogState(() => isSavingEdit = true);
+                      try {
+                        final bazaarId = bazaar['id'];
+                        final String startTimeFormatted = _formatTimeOfDay(startTime);
+                        final String endTimeFormatted = _formatTimeOfDay(endTime);
 
-                // 2. Re-sync all selected days in bazaar_schedules
-                await supabase.from('bazaar_schedules').delete().eq('bazaar_id', bazaarId);
-                final newSchedules = selectedDays.map((day) => {
-                  'bazaar_id': bazaarId,
-                  'day_of_week': day,
-                  'start_time': '15:30:00',
-                  'end_time': '21:00:00',
-                }).toList();
-                await supabase.from('bazaar_schedules').insert(newSchedules);
+                        // 1. Update metadata
+                        await supabase.from('bazaars').update({
+                          'name': nameController.text.trim(),
+                          'locality': localityController.text.trim(),
+                          'landmark': landmarkController.text.trim(),
+                          'latitude': updatedLat,
+                          'longitude': updatedLng,
+                        }).eq('id', bazaarId);
 
-                if (ctx.mounted) Navigator.pop(ctx);
-                _fetchBazaarsForMap();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text("Bazaar spot updated!"),
-                    backgroundColor: Color(0xFF2E7D32),
-                  ),
-                );
-              },
-              child: const Text("Save Changes"),
+                        // 2. Re-sync schedule records with custom timings
+                        await supabase.from('bazaar_schedules').delete().eq('bazaar_id', bazaarId);
+
+                        final newSchedules = selectedDays.map((day) => {
+                          'bazaar_id': bazaarId,
+                          'day_of_week': day,
+                          'start_time': startTimeFormatted,
+                          'end_time': endTimeFormatted,
+                        }).toList();
+
+                        await supabase.from('bazaar_schedules').insert(newSchedules);
+
+                        if (ctx.mounted) Navigator.pop(ctx);
+                        _fetchBazaarsForMap();
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Bazaar spot updated successfully!"),
+                              backgroundColor: Color(0xFF2E7D32),
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() => isSavingEdit = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text("Failed to update: $e"), backgroundColor: Colors.red),
+                          );
+                        }
+                      }
+                    },
+              child: isSavingEdit
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                  : const Text("Save Changes"),
             ),
           ],
         ),
@@ -745,15 +827,25 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
             onPressed: () async {
-              final bazaarId = bazaar['id'];
-              await supabase.from('bazaar_schedules').delete().eq('bazaar_id', bazaarId);
-              await supabase.from('bazaars').delete().eq('id', bazaarId);
+              try {
+                final bazaarId = bazaar['id'];
+                await supabase.from('bazaar_schedules').delete().eq('bazaar_id', bazaarId);
+                await supabase.from('bazaars').delete().eq('id', bazaarId);
 
-              if (ctx.mounted) Navigator.pop(ctx);
-              _fetchBazaarsForMap();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Bazaar spot removed."), backgroundColor: Colors.red),
-              );
+                if (ctx.mounted) Navigator.pop(ctx);
+                _fetchBazaarsForMap();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Bazaar spot removed."), backgroundColor: Colors.red),
+                  );
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Failed to delete: $e"), backgroundColor: Colors.red),
+                  );
+                }
+              }
             },
             child: const Text("Delete"),
           ),
@@ -1120,6 +1212,9 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
   final MapController _miniMapController = MapController();
 
   final Set<int> _selectedDays = {};
+  TimeOfDay _startTime = const TimeOfDay(hour: 15, minute: 30);
+  TimeOfDay _endTime = const TimeOfDay(hour: 21, minute: 0);
+
   bool _isSaving = false;
   bool _isLocating = false;
 
@@ -1143,6 +1238,12 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
     _pinpointCurrentLocation();
   }
 
+  String _formatTimeOfDay(TimeOfDay tod) {
+    final String hour = tod.hour.toString().padLeft(2, '0');
+    final String min = tod.minute.toString().padLeft(2, '0');
+    return '$hour:$min:00';
+  }
+
   Future<void> _pinpointCurrentLocation() async {
     setState(() => _isLocating = true);
     try {
@@ -1151,8 +1252,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
         perm = await Geolocator.requestPermission();
       }
 
-      if (perm == LocationPermission.whileInUse ||
-          perm == LocationPermission.always) {
+      if (perm == LocationPermission.whileInUse || perm == LocationPermission.always) {
         Position pos = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
           timeLimit: const Duration(seconds: 5),
@@ -1163,8 +1263,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
         });
         _miniMapController.move(latlong.LatLng(_pinnedLat, _pinnedLng), 15);
       }
-    } catch (_) {}
-    finally {
+    } catch (_) {} finally {
       if (mounted) setState(() => _isLocating = false);
     }
   }
@@ -1194,13 +1293,14 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
       }).select().single();
 
       final String newBazaarId = bazaarRes['id'];
+      final String startTimeFormatted = _formatTimeOfDay(_startTime);
+      final String endTimeFormatted = _formatTimeOfDay(_endTime);
 
-      // Batch insert multiple schedules for the same bazaar
       final scheduleInserts = _selectedDays.map((day) => {
         'bazaar_id': newBazaarId,
         'day_of_week': day,
-        'start_time': '15:30:00',
-        'end_time': '21:00:00',
+        'start_time': startTimeFormatted,
+        'end_time': endTimeFormatted,
       }).toList();
 
       await supabase.from('bazaar_schedules').insert(scheduleInserts);
@@ -1360,6 +1460,34 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
                   border: OutlineInputBorder(),
                   prefixIcon: Icon(Icons.flag_outlined),
                 ),
+              ),
+              const SizedBox(height: 14),
+              const Text("⏰ Operating Timings:", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+              const SizedBox(height: 6),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.access_time, size: 16),
+                      label: Text("Opens: ${_startTime.format(context)}"),
+                      onPressed: () async {
+                        final picked = await showTimePicker(context: context, initialTime: _startTime);
+                        if (picked != null) setState(() => _startTime = picked);
+                      },
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      icon: const Icon(Icons.access_time_filled, size: 16),
+                      label: Text("Closes: ${_endTime.format(context)}"),
+                      onPressed: () async {
+                        final picked = await showTimePicker(context: context, initialTime: _endTime);
+                        if (picked != null) setState(() => _endTime = picked);
+                      },
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 16),
               const Text(
