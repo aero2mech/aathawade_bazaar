@@ -64,6 +64,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     BazaarMapScreen(),
     ExploreBazaarsScreen(),
     AddBazaarScreen(),
+    VeggieQuizScreen(),
   ];
 
   @override
@@ -181,12 +182,61 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     }
   }
 
+  void _showHelpDialog() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.help, color: Color(0xFF2E7D32)),
+            SizedBox(width: 8),
+            Text("Bhaaji Market Guide"),
+          ],
+        ),
+        content: const SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text("📍 **Today**: View markets active today with distance calculation[cite: 3].", style: TextStyle(fontSize: 13)),
+              SizedBox(height: 8),
+              Text("🗺️ **Live Map**: Green pins are open today; orange pins are other days[cite: 3]. Tap any pin to navigate, check live stock, edit, or leave reviews!", style: TextStyle(fontSize: 13)),
+              SizedBox(height: 8),
+              Text("⚡ **Live Veggie Signals**: Check live stock & quality reported by shoppers/farmers that automatically expire after the market closes!", style: TextStyle(fontSize: 13)),
+              SizedBox(height: 8),
+              Text("📅 **Explorer**: Browse farmers markets by specific days of the week[cite: 3].", style: TextStyle(fontSize: 13)),
+              SizedBox(height: 8),
+              Text("➕ **Add Spot**: Pinpoint new markets on the expandable map and publish them live[cite: 3].", style: TextStyle(fontSize: 13)),
+              SizedBox(height: 8),
+              Text("🎮 **Veggie Quiz**: Test your vegetable knowledge!", style: TextStyle(fontSize: 13)),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF2E7D32),
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text("Got it!"),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Bhaaji Market'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.help_outline),
+            tooltip: 'App Guide & Help',
+            onPressed: _showHelpDialog,
+          ),
           IconButton(
             icon: const Icon(Icons.share),
             tooltip: 'Share App',
@@ -226,6 +276,11 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               icon: Icon(Icons.add_location_alt_outlined),
               selectedIcon: Icon(Icons.add_location_alt),
               label: "Add Spot",
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.psychology_outlined),
+              selectedIcon: Icon(Icons.psychology),
+              label: "Veggie Quiz",
             ),
           ],
         ),
@@ -380,7 +435,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
                                     fontSize: 16, color: Colors.grey),
                               ),
                               const SizedBox(height: 8),
-                              const Text("Check 'Live Map' or 'Explorer'."),
+                              const Text("Check 'Live Map' or 'Explorer'[cite: 3]."),
                             ],
                           ),
                         )
@@ -473,7 +528,7 @@ class _TodayBazaarsScreenState extends State<TodayBazaarsScreen> {
 }
 
 // ==========================================
-// 2. LIVE MAP (WITH EDIT, IDENTITY ROLES & REVIEWS)
+// 2. LIVE MAP
 // ==========================================
 class BazaarMapScreen extends StatefulWidget {
   const BazaarMapScreen({super.key});
@@ -664,7 +719,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                   ),
                   const SizedBox(height: 14),
                   const Text(
-                    "📅 Select Operating Days:",
+                    "📅 Select Operating Days[cite: 3]:",
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
                   ),
                   const SizedBox(height: 6),
@@ -695,7 +750,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       const Text(
-                        "📍 Relocate Pin on Map:",
+                        "📍 Relocate Pin on Map[cite: 3]:",
                         style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey),
                       ),
                       IconButton(
@@ -885,7 +940,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
         final String bazaarId = bazaar['id'];
 
         return DraggableScrollableSheet(
-          initialChildSize: 0.70,
+          initialChildSize: 0.75,
           minChildSize: 0.45,
           maxChildSize: 0.95,
           expand: false,
@@ -1005,7 +1060,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                           children: [
                             CircleAvatar(radius: 5, backgroundColor: Color(0xFF2E7D32)),
                             SizedBox(width: 6),
-                            Text("Open Today", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                            Text("Open Today[cite: 3]", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                           ],
                         ),
                         SizedBox(height: 4),
@@ -1014,7 +1069,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
                           children: [
                             CircleAvatar(radius: 5, backgroundColor: Color(0xFFE65100)),
                             SizedBox(width: 6),
-                            Text("Other Days", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+                            Text("Other Days[cite: 3]", style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
                           ],
                         ),
                       ],
@@ -1028,7 +1083,7 @@ class _BazaarMapScreenState extends State<BazaarMapScreen> {
 }
 
 // ==========================================
-// BOTTOM SHEET (REVIEWS + USER ROLE BADGES)
+// DETAILS BOTTOM SHEET WITH LIVE VEGGIE SIGNALS
 // ==========================================
 class BazaarDetailsAndReviewsSheet extends StatefulWidget {
   final Map<String, dynamic> bazaar;
@@ -1059,34 +1114,70 @@ class BazaarDetailsAndReviewsSheet extends StatefulWidget {
 class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSheet> {
   final TextEditingController _commentController = TextEditingController();
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _veggieNameController = TextEditingController();
+  final TextEditingController _veggieNoteController = TextEditingController();
   
-  String _selectedRole = 'Customer'; // 'Customer' or 'Shopkeeper'
+  String _selectedRole = 'Customer';
+  String _selectedQuality = 'Fresh / A Grade';
   int _userRating = 5;
   bool _isSubmittingReview = false;
+  bool _isSubmittingSignal = false;
+  
   List<Map<String, dynamic>> _reviews = [];
-  bool _isLoadingReviews = true;
+  List<Map<String, dynamic>> _liveSignals = [];
+  bool _isLoading = true;
+  RealtimeChannel? _signalsRealtimeChannel;
 
   @override
   void initState() {
     super.initState();
-    _fetchReviews();
+    _fetchData();
+    _subscribeToLiveSignals();
   }
 
-  Future<void> _fetchReviews() async {
+  @override
+  void dispose() {
+    _signalsRealtimeChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeToLiveSignals() {
+    _signalsRealtimeChannel = supabase
+        .channel('public:live_veggie_signals_${widget.bazaarId}')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'live_veggie_signals',
+          callback: (payload) => _fetchData(),
+        )
+        .subscribe();
+  }
+
+  Future<void> _fetchData() async {
     try {
-      final res = await supabase
+      final reviewsRes = await supabase
           .from('bazaar_reviews')
           .select('*')
           .eq('bazaar_id', widget.bazaarId)
           .order('created_at', ascending: false);
+
+      // Only fetch active (non-expired) live signals
+      final signalsRes = await supabase
+          .from('live_veggie_signals')
+          .select('*')
+          .eq('bazaar_id', widget.bazaarId)
+          .gt('expires_at', DateTime.now().toIso8601String())
+          .order('created_at', ascending: false);
+
       if (mounted) {
         setState(() {
-          _reviews = List<Map<String, dynamic>>.from(res);
-          _isLoadingReviews = false;
+          _reviews = List<Map<String, dynamic>>.from(reviewsRes);
+          _liveSignals = List<Map<String, dynamic>>.from(signalsRes);
+          _isLoading = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _isLoadingReviews = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -1102,10 +1193,31 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
         'comment': _commentController.text.trim(),
       });
       _commentController.clear();
-      _fetchReviews();
+      _fetchData();
     } catch (_) {}
     finally {
       if (mounted) setState(() => _isSubmittingReview = false);
+    }
+  }
+
+  Future<void> _addLiveSignal() async {
+    if (_veggieNameController.text.trim().isEmpty) return;
+    setState(() => _isSubmittingSignal = true);
+    try {
+      await supabase.from('live_veggie_signals').insert({
+        'bazaar_id': widget.bazaarId,
+        'reporter_name': _nameController.text.trim().isEmpty ? 'Shopper' : _nameController.text.trim(),
+        'veggie_name': _veggieNameController.text.trim(),
+        'quality_grade': _selectedQuality,
+        'note': _veggieNoteController.text.trim(),
+        'expires_at': DateTime.now().add(const Duration(hours: 4)).toIso8601String(),
+      });
+      _veggieNameController.clear();
+      _veggieNoteController.clear();
+      _fetchData();
+    } catch (_) {}
+    finally {
+      if (mounted) setState(() => _isSubmittingSignal = false);
     }
   }
 
@@ -1213,6 +1325,97 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
             ),
           ),
           const Divider(height: 28),
+
+          // --- LIVE VEGGIE STOCK & QUALITY FEED (SELF-EXPIRING) ---
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text("⚡ Live Veggie Stock & Quality", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(color: Colors.green.shade100, borderRadius: BorderRadius.circular(10)),
+                child: const Text("REAL-TIME", style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Color(0xFF2E7D32))),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Card(
+            color: const Color(0xFFF1F8E9),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Report Veggie Availability & Quality:", style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _veggieNameController,
+                          decoration: const InputDecoration(
+                            hintText: "e.g., Spinach (पालक) / Mangoes",
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      DropdownButton<String>(
+                        value: _selectedQuality,
+                        items: ['Fresh / A Grade', 'Standard', 'Limited Stock']
+                            .map((q) => DropdownMenuItem(value: q, child: Text(q, style: const TextStyle(fontSize: 12))))
+                            .toList(),
+                        onChanged: (val) => setState(() => _selectedQuality = val!),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _veggieNoteController,
+                          decoration: const InputDecoration(
+                            hintText: "Price / Stall Note (e.g., ₹20/bunch at stall 2)",
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2E7D32), foregroundColor: Colors.white),
+                        onPressed: _isSubmittingSignal ? null : _addLiveSignal,
+                        child: _isSubmittingSignal
+                            ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                            : const Text("Post"),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (_liveSignals.isEmpty)
+            const Text("No active stock signals for today yet. Be the first to tag what is fresh!", style: TextStyle(fontSize: 12, color: Colors.grey))
+          else
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: _liveSignals.map((sig) {
+                final isFresh = sig['quality_grade'] == 'Fresh / A Grade';
+                return Chip(
+                  avatar: Text(isFresh ? '🟢' : '🟡'),
+                  label: Text("${sig['veggie_name']} (${sig['quality_grade']})${sig['note'] != null && sig['note'].toString().isNotEmpty ? ' - ${sig['note']}' : ''}"),
+                  backgroundColor: isFresh ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0),
+                );
+              }).toList(),
+            ),
+
+          const Divider(height: 28),
           const Text("💬 Comments & Community Updates", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 8),
           Card(
@@ -1303,7 +1506,7 @@ class _BazaarDetailsAndReviewsSheetState extends State<BazaarDetailsAndReviewsSh
             ),
           ),
           const SizedBox(height: 12),
-          if (_isLoadingReviews)
+          if (_isLoading)
             const Center(child: CircularProgressIndicator())
           else if (_reviews.isEmpty)
             const Text("No comments yet. Share first review or stall update!", style: TextStyle(fontSize: 12, color: Colors.grey))
@@ -1792,7 +1995,7 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
               ),
               const SizedBox(height: 16),
               const Text(
-                "Select Operating Day(s):",
+                "Select Operating Day(s)[cite: 3]:",
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
               const SizedBox(height: 6),
@@ -1838,6 +2041,198 @@ class _AddBazaarScreenState extends State<AddBazaarScreen> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 5. VEGGIE KNOWLEDGE MINI-GAME SCREEN
+// ==========================================
+class VeggieQuizScreen extends StatefulWidget {
+  const VeggieQuizScreen({super.key});
+
+  @override
+  State<VeggieQuizScreen> createState() => _VeggieQuizScreenState();
+}
+
+class _VeggieQuizScreenState extends State<VeggieQuizScreen> {
+  int _currentIndex = 0;
+  int _score = 0;
+  bool _answered = false;
+  int? _selectedChoice;
+
+  final List<Map<String, dynamic>> _questions = [
+    {
+      'question': 'What vegetable is this?',
+      'icon': '🍅',
+      'options': ['Tomato (टोमॅटो)', 'Brinjal (वांगं)', 'Potato (बटाटा)', 'Onion (कांदा)'],
+      'answer': 0,
+    },
+    {
+      'question': 'What is this leafy green vegetable called?',
+      'icon': '🥬',
+      'options': ['Cabbage (कोबी)', 'Spinach (पालक)', 'Coriander (कोथिंबीर)', 'Fenugreek (मेथी)'],
+      'answer': 1,
+    },
+    {
+      'question': 'Identify this purple vegetable:',
+      'icon': '🍆',
+      'options': ['Carrot (गाजर)', 'Radish (मुळा)', 'Brinjal (वांगं)', 'Beetroot (बीट)'],
+      'answer': 2,
+    },
+    {
+      'question': 'Identify this root vegetable:',
+      'icon': '🥔',
+      'options': ['Sweet Potato (रताळे)', 'Potato (बटाटा)', 'Garlic (लसूण)', 'Ginger (आले)'],
+      'answer': 1,
+    },
+    {
+      'question': 'What is this green pod vegetable called?',
+      'icon': '🫛',
+      'options': ['Green Peas (वाटाणा)', 'Green Chilli (हिरवी मिरची)', 'Beans (घेवडा)', 'Cucumber (काकडी)'],
+      'answer': 0,
+    },
+    {
+      'question': 'What vegetable is this crunchy orange root?',
+      'icon': '🥕',
+      'options': ['Carrot (गाजर)', 'Radish (मुळा)', 'Turnip (शलगम)', 'Sweet Corn (मका)'],
+      'answer': 0,
+    },
+  ];
+
+  void _answerQuestion(int idx) {
+    if (_answered) return;
+    setState(() {
+      _answered = true;
+      _selectedChoice = idx;
+      if (idx == _questions[_currentIndex]['answer']) {
+        _score++;
+      }
+    });
+  }
+
+  void _nextQuestion() {
+    setState(() {
+      _answered = false;
+      _selectedChoice = null;
+      _currentIndex++;
+    });
+  }
+
+  void _resetQuiz() {
+    setState(() {
+      _currentIndex = 0;
+      _score = 0;
+      _answered = false;
+      _selectedChoice = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_currentIndex >= _questions.length) {
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Text("🎉", style: TextStyle(fontSize: 64)),
+                const SizedBox(height: 16),
+                const Text("Quiz Completed!", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                Text("Your Score: $_score / ${_questions.length}", style: const TextStyle(fontSize: 18, color: Color(0xFF2E7D32), fontWeight: FontWeight.bold)),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF2E7D32),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                  icon: const Icon(Icons.replay),
+                  label: const Text("Play Again"),
+                  onPressed: _resetQuiz,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final q = _questions[_currentIndex];
+
+    return Scaffold(
+      body: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text("Question ${_currentIndex + 1}/${_questions.length}", style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.grey)),
+                Chip(
+                  backgroundColor: Colors.green.shade50,
+                  label: Text("Score: $_score", style: const TextStyle(color: Color(0xFF2E7D32), fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Center(
+              child: Text(q['icon'], style: const TextStyle(fontSize: 80)),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              q['question'],
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            ...List.generate(q['options'].length, (idx) {
+              Color btnColor = Colors.white;
+              Color textColor = Colors.black87;
+              if (_answered) {
+                if (idx == q['answer']) {
+                  btnColor = Colors.green.shade100;
+                  textColor = Colors.green.shade900;
+                } else if (idx == _selectedChoice) {
+                  btnColor = Colors.red.shade100;
+                  textColor = Colors.red.shade900;
+                }
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 10),
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: btnColor,
+                    foregroundColor: textColor,
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 1,
+                  ),
+                  onPressed: () => _answerQuestion(idx),
+                  child: Text(q['options'][idx], style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w500)),
+                ),
+              );
+            }),
+            const Spacer(),
+            if (_answered)
+              ElevatedButton(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: _nextQuestion,
+                child: Text(_currentIndex < _questions.length - 1 ? "Next Question" : "View Final Score", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              ),
+          ],
         ),
       ),
     );
